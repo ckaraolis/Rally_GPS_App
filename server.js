@@ -2,7 +2,7 @@ const crypto = require("crypto");
 const os = require("os");
 const path = require("path");
 const express = require("express");
-const { getStore, hasUpstash, pickColor, newToken, PALETTE } = require("./lib/store");
+const { getStore, hasSupabase, pickColor, newToken, PALETTE } = require("./lib/store");
 
 const app = express();
 const PORT = Number(process.env.PORT) || 3000;
@@ -90,7 +90,7 @@ app.get("/api/health", (_req, res) => {
   res.json({
     ok: true,
     store: store.mode,
-    upstash: hasUpstash(),
+    supabase: hasSupabase(),
     time: Date.now(),
   });
 });
@@ -351,7 +351,7 @@ function startLocal() {
     const ips = lanIPs();
     console.log("");
     console.log("  Rally GPS tracking is running");
-    console.log(`  Store:     ${store.mode}${hasUpstash() ? " (Upstash Redis)" : " (local memory)"}`);
+    console.log(`  Store:     ${store.mode}${hasSupabase() ? " (Supabase)" : " (local memory)"}`);
     console.log(`  Local:     http://localhost:${PORT}`);
     for (const ip of ips) console.log(`  Network:   http://${ip}:${PORT}`);
     console.log("");

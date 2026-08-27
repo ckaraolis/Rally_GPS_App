@@ -17,33 +17,33 @@ Open **http://localhost:3000**
 | Race control | `/control.html` |
 | Google Earth Pro link | `/earth-link.kml` |
 
-## Deploy on Vercel (recommended permanent server)
+## Deploy on Vercel + Supabase (permanent server)
 
-The app is converted for Vercel. Car positions are stored in **Upstash Redis** so every phone and Google Earth see the same live data.
+Car positions are stored in your **Supabase** database so every phone and Google Earth see the same live data.
 
-### 1) Create free Redis (Upstash)
+### 1) Create the table in Supabase
 
-1. Go to [https://upstash.com](https://upstash.com) and sign up
-2. Create a **Redis** database
-3. Open the database → copy:
-   - `UPSTASH_REDIS_REST_URL`
-   - `UPSTASH_REDIS_REST_TOKEN`
+1. Open your Supabase project → **SQL Editor**
+2. Run the SQL in `supabase/schema.sql`
 
-### 2) Deploy to Vercel
+### 2) Copy keys
 
-1. Push this project to GitHub (or deploy from the Vercel dashboard with the project folder)
-2. Import the project in [https://vercel.com](https://vercel.com)
-3. In **Settings → Environment Variables**, add:
-   - `UPSTASH_REDIS_REST_URL`
-   - `UPSTASH_REDIS_REST_TOKEN`
-   - optional: `PUBLIC_BASE_URL=https://your-app.vercel.app`
-4. Deploy
+Supabase → **Project Settings** → **API**:
+- `SUPABASE_URL`
+- `SUPABASE_SERVICE_ROLE_KEY` (use `service_role`, keep it secret)
 
-Your public URL will look like:
+### 3) Deploy to Vercel
 
-`https://your-app.vercel.app`
+1. Import `https://github.com/ckaraolis/Rally_GPS_App` in [vercel.com](https://vercel.com)
+2. Add env vars:
+   - `SUPABASE_URL`
+   - `SUPABASE_SERVICE_ROLE_KEY`
+3. Deploy
 
-### 3) Point the Android app
+Public URL example: `https://your-app.vercel.app`  
+Health check: `/api/health` should show `"store":"supabase"`
+
+### 4) Point the Android app
 
 Edit `android/app/src/main/java/com/rallygps/app/ServerConfig.kt`:
 
@@ -53,13 +53,9 @@ const val DEFAULT_PUBLIC_URL = "https://your-app.vercel.app"
 
 Then rebuild the APK.
 
-### Local without Redis
+### Local without Supabase
 
 `npm start` still works on your PC using in-memory storage (fine for same-Wi‑Fi tests).
-
-Check storage mode:
-
-`GET /api/health` → `{ "store": "redis" }` on Vercel, or `"memory"` locally.
 
 ## Android driver app (APK)
 
