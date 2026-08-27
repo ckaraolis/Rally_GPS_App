@@ -1,0 +1,17 @@
+node_modules/
+.DS_Store
+*.log
+.android-sdk/
+.tools/
+android/.gradle/
+android/local.properties
+android/app/build/
+android/build/
+*.apk
+android/*.apk
+android/**/*.apk
+*.iml
+.idea/
+.env
+.env.local
+.vercel

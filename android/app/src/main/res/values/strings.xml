@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Rally GPS</string>
+    <string name="join_title">Join the rally</string>
+    <string name="server_url">Server URL</string>
+    <string name="car_number">Car number</string>
+    <string name="driver_name">Driver name</string>
+    <string name="continue_btn">Continue</string>
+    <string name="start_tracking">Start tracking</string>
+    <string name="stop_tracking">Stop tracking</string>
+    <string name="status_ready">READY</string>
+    <string name="status_tracking">TRACKING</string>
+    <string name="status_hint_ready">Tap start when you are on the road</string>
+    <string name="status_hint_tracking">Keep GPS allowed. This app can track with the screen off.</string>
+    <string name="notification_title">Rally GPS tracking</string>
+    <string name="notification_text">Sending live position to race control</string>
+    <string name="channel_name">Live tracking</string>
+    <string name="channel_desc">Shows while the car is being tracked</string>
+</resources>

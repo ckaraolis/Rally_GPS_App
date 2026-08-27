@@ -1,0 +1,15 @@
+{
+  "name": "Rally GPS",
+  "short_name": "Rally GPS",
+  "start_url": "/driver.html",
+  "display": "standalone",
+  "background_color": "#10110f",
+  "theme_color": "#10110f",
+  "icons": [
+    {
+      "src": "/icons/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml"
+    }
+  ]
+}

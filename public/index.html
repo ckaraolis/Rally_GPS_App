@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#10110f" />
+  <title>Rally GPS</title>
+  <link rel="manifest" href="/manifest.json" />
+  <link rel="icon" href="/icons/icon.svg" type="image/svg+xml" />
+  <link rel="stylesheet" href="/css/app.css" />
+</head>
+<body>
+  <div class="tape" aria-hidden="true"></div>
+  <main class="shell">
+    <header class="brand">
+      <p class="eyebrow">Stage computer</p>
+      <h1>Rally GPS</h1>
+      <p class="lede">Drivers broadcast phone GPS. Race control follows every car live in Google Earth.</p>
+    </header>
+
+    <ol class="steps">
+      <li><span>01</span> Driver opens the app and taps Start tracking</li>
+      <li><span>02</span> The phone sends position every few seconds</li>
+      <li><span>03</span> Google Earth Pro refreshes the live KML link</li>
+    </ol>
+
+    <nav class="gates">
+      <a class="gate gate-driver" href="/driver.html">
+        <small>In the car</small>
+        <strong>Driver</strong>
+        <em>Start tracking from this phone</em>
+      </a>
+      <a class="gate gate-control" href="/control.html">
+        <small>At HQ</small>
+        <strong>Race control</strong>
+        <em>Map + open in Google Earth</em>
+      </a>
+    </nav>
+  </main>
+</body>
+</html>

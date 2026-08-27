@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#10110f" />
+  <title>Race control · Rally GPS</title>
+  <link rel="manifest" href="/manifest.json" />
+  <link rel="icon" href="/icons/icon.svg" type="image/svg+xml" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <link rel="stylesheet" href="/css/app.css" />
+</head>
+<body class="control-body">
+  <div class="tape" aria-hidden="true"></div>
+  <aside class="control-side">
+    <header>
+      <a class="back" href="/">Rally GPS</a>
+      <h1>Race control</h1>
+      <p class="lede tight">Follow every car here, then open the same feed in Google Earth Pro.</p>
+    </header>
+
+    <div class="earth-box">
+      <p class="eyebrow">Google Earth</p>
+      <a class="btn btn-amber" href="/earth-link.kml">Open in Google Earth</a>
+      <button id="copyLink" type="button" class="btn btn-ghost">Copy live KML URL</button>
+      <p class="hint">Download Google Earth Pro (free). Open the downloaded <code>Rally_Live_Tracking.kml</code> file. Cars update every 4 seconds while Earth stays open.</p>
+    </div>
+
+    <section>
+      <p class="eyebrow">Cars on course</p>
+      <ul id="carList" class="car-list">
+        <li class="empty">Waiting for drivers to start tracking…</li>
+      </ul>
+    </section>
+  </aside>
+  <div id="map" class="control-map"></div>
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="/js/control.js"></script>
+</body>
+</html>

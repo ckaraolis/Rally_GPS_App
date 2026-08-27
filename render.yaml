@@ -1,0 +1,11 @@
+services:
+  - type: web
+    name: rally-gps
+    runtime: node
+    plan: free
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /api/cars
+    envVars:
+      - key: NODE_ENV
+        value: production

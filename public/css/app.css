@@ -1,0 +1,301 @@
+@import url("https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;700;800&family=Share+Tech+Mono&display=swap");
+
+:root {
+  --bg: #10110f;
+  --panel: #181a14;
+  --ink: #f3ead8;
+  --muted: #9a917f;
+  --line: #2c2f26;
+  --orange: #ff7a18;
+  --amber: #ffc14a;
+  --go: #b6f04a;
+  --stop: #ff3b30;
+  --font: "Barlow Condensed", sans-serif;
+  --mono: "Share Tech Mono", ui-monospace, monospace;
+}
+
+* { box-sizing: border-box; }
+html, body { margin: 0; min-height: 100%; }
+body {
+  background:
+    radial-gradient(1200px 500px at 10% -10%, #2a220f 0%, transparent 55%),
+    var(--bg);
+  color: var(--ink);
+  font-family: var(--font);
+}
+a { color: var(--amber); text-decoration: none; }
+code { font-family: var(--mono); font-size: 0.9em; }
+
+.tape {
+  height: 8px;
+  background: repeating-linear-gradient(
+    115deg,
+    #111 0 10px,
+    var(--amber) 10px 20px,
+    #111 20px 30px,
+    var(--orange) 30px 40px
+  );
+}
+
+.hidden { display: none !important; }
+
+.shell {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 48px 24px 80px;
+}
+
+.brand h1,
+.driver-shell h1,
+.control-side h1 {
+  margin: 0;
+  font-size: clamp(3.2rem, 8vw, 5.5rem);
+  line-height: 0.9;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
+.eyebrow {
+  margin: 0 0 6px;
+  color: var(--orange);
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  font-size: 0.85rem;
+}
+
+.lede {
+  color: var(--muted);
+  font-size: 1.25rem;
+  max-width: 38ch;
+}
+.lede.tight { font-size: 1.05rem; }
+
+.steps {
+  list-style: none;
+  padding: 0;
+  margin: 36px 0 40px;
+  border-top: 1px solid var(--line);
+}
+.steps li {
+  display: flex;
+  gap: 16px;
+  align-items: baseline;
+  padding: 14px 0;
+  border-bottom: 1px solid var(--line);
+  font-size: 1.2rem;
+}
+.steps span {
+  font-family: var(--mono);
+  color: var(--amber);
+}
+
+.gates {
+  display: grid;
+  gap: 14px;
+}
+.gate {
+  display: block;
+  padding: 22px 24px;
+  border: 1px solid var(--line);
+  background: var(--panel);
+  color: var(--ink);
+}
+.gate small {
+  display: block;
+  color: var(--muted);
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+.gate strong {
+  display: block;
+  font-size: 2.4rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.gate em {
+  color: var(--muted);
+  font-style: normal;
+}
+.gate-driver { border-left: 6px solid var(--go); }
+.gate-control { border-left: 6px solid var(--orange); }
+
+.btn {
+  display: inline-flex;
+  justify-content: center;
+  align-items: center;
+  width: 100%;
+  min-height: 56px;
+  border: 0;
+  cursor: pointer;
+  font-family: var(--font);
+  font-size: 1.35rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #111;
+}
+.btn-amber { background: var(--amber); }
+.btn-start { background: var(--go); min-height: 72px; font-size: 1.6rem; }
+.btn-stop { background: var(--stop); color: #fff; min-height: 72px; font-size: 1.6rem; }
+.btn-ghost {
+  background: transparent;
+  color: var(--ink);
+  border: 1px solid var(--line);
+}
+
+.back {
+  color: var(--muted);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  font-size: 0.9rem;
+}
+
+.driver-shell, .control-side { padding: 24px; }
+.driver-shell { max-width: 520px; margin: 0 auto; padding-bottom: 48px; }
+
+.secure-note {
+  margin: 10px 0 0;
+  padding: 10px 12px;
+  border: 1px solid #5a3a12;
+  background: #2a1c0c;
+  color: var(--amber);
+  font-size: 1rem;
+}
+
+.join-form, .earth-box, .panel { display: grid; gap: 14px; }
+.join-form label {
+  display: grid;
+  gap: 6px;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+input {
+  width: 100%;
+  padding: 14px 12px;
+  border: 1px solid var(--line);
+  background: #0c0d0b;
+  color: var(--ink);
+  font-family: var(--mono);
+  font-size: 1.3rem;
+}
+
+.plate {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  padding: 12px 14px;
+  background: #0a0b09;
+  border: 4px solid #eee8d8;
+  font-size: 1.8rem;
+  text-transform: uppercase;
+}
+.plate span:first-child { color: var(--amber); }
+
+.lamp {
+  padding: 22px 16px;
+  text-align: center;
+  border: 1px solid var(--line);
+}
+.lamp span {
+  display: block;
+  font-size: 2.4rem;
+  letter-spacing: 0.18em;
+}
+.lamp small { color: var(--muted); }
+.lamp-idle { background: #16170f; }
+.lamp-live {
+  background: #10200c;
+  box-shadow: inset 0 0 0 2px var(--go);
+}
+.lamp-live span { color: var(--go); }
+.lamp-warn { background: #2a140c; }
+.lamp-warn span { color: var(--orange); }
+
+.telemetry {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1px;
+  background: var(--line);
+  border: 1px solid var(--line);
+  margin: 0;
+}
+.telemetry div { background: var(--panel); padding: 14px; }
+.telemetry dt {
+  margin: 0;
+  color: var(--muted);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  font-size: 0.8rem;
+}
+.telemetry dd {
+  margin: 6px 0 0;
+  font-family: var(--mono);
+  font-size: 1.6rem;
+}
+
+.coords {
+  font-family: var(--mono);
+  color: var(--muted);
+  font-size: 0.95rem;
+}
+.error { color: var(--stop); }
+
+.control-body {
+  display: grid;
+  grid-template-columns: minmax(280px, 380px) 1fr;
+  min-height: 100vh;
+}
+.control-side {
+  border-right: 1px solid var(--line);
+  background: #14150f;
+  overflow: auto;
+}
+.control-side h1 { font-size: 3rem; }
+.earth-box {
+  margin: 24px 0;
+  padding: 16px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+}
+.hint { color: var(--muted); font-size: 0.95rem; line-height: 1.4; }
+.control-map { min-height: 100vh; background: #0b0c0a; }
+
+.car-list { list-style: none; padding: 0; margin: 0; }
+.car-list li {
+  display: grid;
+  grid-template-columns: 10px 1fr auto;
+  gap: 10px;
+  align-items: center;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--line);
+  cursor: pointer;
+}
+.car-list .dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+}
+.car-list strong { display: block; font-size: 1.3rem; text-transform: uppercase; }
+.car-list small { color: var(--muted); }
+.car-list .empty { display: block; color: var(--muted); cursor: default; }
+
+.leaflet-marker-num {
+  font-family: var(--font);
+  font-weight: 800;
+  color: #111;
+  background: var(--amber);
+  border: 2px solid #111;
+  min-width: 34px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
+}
+
+@media (max-width: 860px) {
+  .control-body { grid-template-columns: 1fr; }
+  .control-map { min-height: 55vh; }
+}

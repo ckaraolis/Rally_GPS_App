@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#10110f" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <title>Driver · Rally GPS</title>
+  <link rel="manifest" href="/manifest.json" />
+  <link rel="icon" href="/icons/icon.svg" type="image/svg+xml" />
+  <link rel="stylesheet" href="/css/app.css" />
+</head>
+<body class="driver-body">
+  <div class="tape" aria-hidden="true"></div>
+  <main class="driver-shell">
+    <header class="driver-top">
+      <a class="back" href="/">Rally GPS</a>
+      <p id="secureNote" class="secure-note hidden"></p>
+    </header>
+
+    <section id="setupPanel" class="panel">
+      <p class="eyebrow">Door plate</p>
+      <h1>Join the rally</h1>
+      <form id="joinForm" class="join-form">
+        <label>
+          Car number
+          <input id="carNumber" name="carNumber" inputmode="numeric" maxlength="8" placeholder="42" required autocomplete="off" />
+        </label>
+        <label>
+          Driver name
+          <input id="driverName" name="driverName" maxlength="40" placeholder="Your name" required autocomplete="name" />
+        </label>
+        <button type="submit" class="btn btn-amber">Continue</button>
+      </form>
+      <p id="setupError" class="error hidden"></p>
+    </section>
+
+    <section id="trackPanel" class="track-panel hidden">
+      <div class="plate">
+        <span id="plateNumber">#—</span>
+        <span id="plateName">—</span>
+      </div>
+
+      <div id="statusLamp" class="lamp lamp-idle">
+        <span id="statusText">READY</span>
+        <small id="statusHint">Tap start when you are on the road</small>
+      </div>
+
+      <dl class="telemetry">
+        <div>
+          <dt>Speed</dt>
+          <dd id="speedRead">—</dd>
+        </div>
+        <div>
+          <dt>GPS</dt>
+          <dd id="accRead">—</dd>
+        </div>
+        <div>
+          <dt>Heading</dt>
+          <dd id="headRead">—</dd>
+        </div>
+        <div>
+          <dt>Fix</dt>
+          <dd id="fixRead">—</dd>
+        </div>
+      </dl>
+
+      <p id="coordRead" class="coords">Waiting for GPS</p>
+      <p id="errorRead" class="error hidden"></p>
+
+      <button id="toggleBtn" type="button" class="btn btn-start">Start tracking</button>
+    </section>
+  </main>
+  <script src="/js/driver.js"></script>
+</body>
+</html>
