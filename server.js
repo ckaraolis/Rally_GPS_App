@@ -43,7 +43,7 @@ function isLive(car) {
   return Boolean(car.tracking && car.last && Date.now() - car.last.ts < STALE_MS);
 }
 
-function serializeCar(car) {
+function serializeCar(car, { includeTrail = false } = {}) {
   return {
     id: car.id,
     carNumber: car.carNumber,
@@ -52,8 +52,9 @@ function serializeCar(car) {
     tracking: car.tracking,
     live: isLive(car),
     last: car.last,
-    trail: car.trail,
     section: car.section || null,
+    trailCount: Array.isArray(car.trail) ? car.trail.length : 0,
+    ...(includeTrail ? { trail: car.trail || [] } : {}),
   };
 }
 
@@ -193,8 +194,68 @@ app.get(
     const cars = await store.listCars();
     res.json({
       serverTime: Date.now(),
-      cars: cars.map(serializeCar),
+      cars: cars.map((car) => serializeCar(car)),
     });
+  })
+);
+
+app.get(
+  "/api/cars/:id/track.gpx",
+  asyncHandler(async (req, res) => {
+    const car = await store.getCar(req.params.id);
+    if (!car) return res.status(404).json({ error: "Car not found." });
+    const trail = Array.isArray(car.trail) ? car.trail : [];
+    const points = trail
+      .map((p) => {
+        const time = p.ts ? new Date(p.ts).toISOString() : "";
+        return `      <trkpt lat="${p.lat}" lon="${p.lon}"><time>${time}</time></trkpt>`;
+      })
+      .join("\n");
+    const gpx = `<?xml version="1.0" encoding="UTF-8"?>
+<gpx version="1.1" creator="Rally GPS">
+  <metadata><name>#${xml(car.carNumber)} ${xml(car.driverName)}</name></metadata>
+  <trk>
+    <name>#${xml(car.carNumber)} ${xml(car.driverName)}</name>
+    <trkseg>
+${points}
+    </trkseg>
+  </trk>
+</gpx>`;
+    res.set({
+      "Content-Type": "application/gpx+xml; charset=utf-8",
+      "Content-Disposition": `attachment; filename="car-${car.carNumber}-track.gpx"`,
+      "Cache-Control": "no-store",
+    });
+    res.send(gpx);
+  })
+);
+
+app.get(
+  "/api/cars/:id/track.kml",
+  asyncHandler(async (req, res) => {
+    const car = await store.getCar(req.params.id);
+    if (!car) return res.status(404).json({ error: "Car not found." });
+    const trail = Array.isArray(car.trail) ? car.trail : [];
+    const coords = trail.map((p) => `${p.lon},${p.lat},0`).join(" ");
+    const kml = `<?xml version="1.0" encoding="UTF-8"?>
+<kml xmlns="http://www.opengis.net/kml/2.2">
+  <Document>
+    <name>#${xml(car.carNumber)} ${xml(car.driverName)}</name>
+    <Placemark>
+      <name>#${xml(car.carNumber)} track</name>
+      <LineString>
+        <tessellate>1</tessellate>
+        <coordinates>${coords}</coordinates>
+      </LineString>
+    </Placemark>
+  </Document>
+</kml>`;
+    res.set({
+      "Content-Type": "application/vnd.google-earth.kml+xml; charset=utf-8",
+      "Content-Disposition": `attachment; filename="car-${car.carNumber}-track.kml"`,
+      "Cache-Control": "no-store",
+    });
+    res.send(kml);
   })
 );
 
@@ -345,8 +406,8 @@ function buildLiveKml(cars, sections = []) {
   ).join("\n");
 
   const routeStyles = `    <Style id="roadStyle">
-      <LineStyle><color>${kmlColor("#ffc14a", "cc")}</color><width>3</width></LineStyle>
-      <PolyStyle><color>${kmlColor("#ffc14a", "44")}</color></PolyStyle>
+      <LineStyle><color>${kmlColor("#3d7dff", "cc")}</color><width>3</width></LineStyle>
+      <PolyStyle><color>${kmlColor("#3d7dff", "44")}</color></PolyStyle>
     </Style>
     <Style id="stageStyle">
       <LineStyle><color>${kmlColor("#ff3b30", "ee")}</color><width>5</width></LineStyle>
@@ -383,23 +444,6 @@ function buildLiveKml(cars, sections = []) {
           <altitudeMode>clampToGround</altitudeMode>
           <coordinates>${car.last.lon},${car.last.lat},0</coordinates>
         </Point>
-      </Placemark>`;
-    })
-    .join("\n");
-
-  const tracks = list
-    .filter((car) => Array.isArray(car.trail) && car.trail.length >= 2)
-    .map((car) => {
-      const styleIndex = PALETTE.indexOf(car.color);
-      const coords = car.trail.map((p) => `${p.lon},${p.lat},0`).join(" ");
-      return `      <Placemark>
-        <name>${xml("#" + car.carNumber + " track")}</name>
-        <styleUrl>#car${styleIndex < 0 ? 0 : styleIndex}</styleUrl>
-        <LineString>
-          <tessellate>1</tessellate>
-          <altitudeMode>clampToGround</altitudeMode>
-          <coordinates>${coords}</coordinates>
-        </LineString>
       </Placemark>`;
     })
     .join("\n");
@@ -448,11 +492,6 @@ ${routeMarks}
       <name>Cars</name>
       <open>1</open>
 ${carMarks}
-    </Folder>
-    <Folder>
-      <name>Tracks</name>
-      <open>0</open>
-${tracks}
     </Folder>
   </Document>
 </kml>`;

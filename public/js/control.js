@@ -5,10 +5,10 @@ L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/
 }).addTo(map);
 
 const markers = new Map();
-const lines = new Map();
 const routeLayers = new Map();
 let fittedOnce = false;
 let fittedRouteOnce = false;
+let latestCars = [];
 
 const copyBtn = document.getElementById("copyLink");
 const routeFile = document.getElementById("routeFile");
@@ -78,8 +78,9 @@ function fileToBase64(file) {
 async function refresh() {
   const res = await fetch("/api/cars");
   const data = await res.json();
-  renderList(data.cars);
-  renderMap(data.cars);
+  latestCars = data.cars || [];
+  renderList(latestCars);
+  renderMap(latestCars);
 }
 
 async function refreshSections() {
@@ -87,6 +88,18 @@ async function refreshSections() {
   const data = await res.json();
   renderSections(data.sections || []);
   renderRouteLayers(data.sections || []);
+}
+
+function popupHtml(car) {
+  const speed =
+    car.last?.speed == null ? "—" : `${Math.round(car.last.speed * 3.6)} km/h`;
+  const section = car.section?.label ? `<div>${escapeHtml(car.section.label)}</div>` : "";
+  return `<div class="car-popup">
+    <strong>#${escapeHtml(car.carNumber)}</strong>
+    <div>${escapeHtml(car.driverName)}</div>
+    <div>Speed: ${speed}</div>
+    ${section}
+  </div>`;
 }
 
 function renderSections(sections) {
@@ -98,7 +111,7 @@ function renderSections(sections) {
     .map((section) => {
       const kind = section.type === "stage" ? "STAGE" : "ROAD";
       return `<li data-section="${section.id}">
-        <span class="dot" style="background:${section.type === "stage" ? "#ff3b30" : "#ffc14a"}"></span>
+        <span class="dot" style="background:${section.type === "stage" ? "#ff3b30" : "#3d7dff"}"></span>
         <div>
           <strong>${escapeHtml(section.name)}</strong>
           <small>${kind} · ${escapeHtml(section.label)}</small>
@@ -141,7 +154,8 @@ function renderRouteLayers(sections) {
     seen.add(section.id);
     const latlngs = section.coordinates.map((p) => [p.lat, p.lon]);
     latlngs.forEach((ll) => bounds.push(ll));
-    const color = section.type === "stage" ? "#ff3b30" : "#ffc14a";
+    // Blue = road, red = stage (same as KMZ convention)
+    const color = section.type === "stage" ? "#ff3b30" : "#3d7dff";
     const weight = section.type === "stage" ? 5 : 3;
     if (routeLayers.has(section.id)) {
       const layer = routeLayers.get(section.id);
@@ -180,6 +194,7 @@ function renderList(cars) {
       const speed =
         car.last?.speed == null ? "—" : `${Math.round(car.last.speed * 3.6)} km/h`;
       const section = car.section?.label || "Off route";
+      const canDownload = (car.trailCount || 0) > 1;
       return `<li data-id="${car.id}">
         <span class="dot" style="background:${car.color}"></span>
         <div>
@@ -187,15 +202,25 @@ function renderList(cars) {
           <small>${state} · ${speed}</small>
           <small class="section-line">${escapeHtml(section)}</small>
         </div>
-        <small>${car.section?.type === "stage" ? "SS" : car.live ? "on course" : ""}</small>
+        ${
+          canDownload
+            ? `<a class="mini-toggle" href="/api/cars/${encodeURIComponent(
+                car.id
+              )}/track.gpx" download>GPX</a>`
+            : `<small>${car.section?.type === "stage" ? "SS" : ""}</small>`
+        }
       </li>`;
     })
     .join("");
 
   for (const row of list.querySelectorAll("li[data-id]")) {
-    row.addEventListener("click", () => {
+    row.addEventListener("click", (event) => {
+      if (event.target.closest("a")) return;
       const car = cars.find((c) => c.id === row.dataset.id);
-      if (car?.last) map.flyTo([car.last.lat, car.last.lon], 14);
+      if (!car?.last) return;
+      map.flyTo([car.last.lat, car.last.lon], 14);
+      const marker = markers.get(car.id);
+      if (marker) marker.openPopup();
     });
   }
 }
@@ -215,22 +240,16 @@ function renderMap(cars) {
     const icon = L.divIcon({ className: "", html, iconSize: [34, 28], iconAnchor: [17, 14] });
 
     if (markers.has(car.id)) {
-      markers.get(car.id).setLatLng([car.last.lat, car.last.lon]).setIcon(icon);
+      const marker = markers.get(car.id);
+      marker.setLatLng([car.last.lat, car.last.lon]).setIcon(icon);
+      marker.setPopupContent(popupHtml(car));
     } else {
-      markers.set(
-        car.id,
-        L.marker([car.last.lat, car.last.lon], { icon, title: `#${car.carNumber}` }).addTo(map)
-      );
-    }
-
-    const latlngs = (car.trail || []).map((p) => [p.lat, p.lon]);
-    if (lines.has(car.id)) {
-      lines.get(car.id).setLatLngs(latlngs);
-    } else {
-      lines.set(
-        car.id,
-        L.polyline(latlngs, { color: car.color, weight: 4, opacity: 0.85 }).addTo(map)
-      );
+      const marker = L.marker([car.last.lat, car.last.lon], {
+        icon,
+        title: `#${car.carNumber}`,
+      }).addTo(map);
+      marker.bindPopup(popupHtml(car), { closeButton: true, offset: [0, -8] });
+      markers.set(car.id, marker);
     }
   }
 
@@ -238,12 +257,6 @@ function renderMap(cars) {
     if (!seen.has(id)) {
       map.removeLayer(marker);
       markers.delete(id);
-    }
-  }
-  for (const [id, line] of lines) {
-    if (!seen.has(id)) {
-      map.removeLayer(line);
-      lines.delete(id);
     }
   }
 

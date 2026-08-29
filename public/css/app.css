@@ -311,6 +311,18 @@ input {
   padding: 6px 8px;
   cursor: pointer;
   white-space: nowrap;
+  text-decoration: none;
+}
+.car-popup {
+  font-family: "Barlow Condensed", sans-serif;
+  min-width: 120px;
+  color: #111;
+}
+.car-popup strong {
+  font-size: 1.2rem;
+}
+.leaflet-popup-content-wrapper {
+  border-radius: 0;
 }
 
 
