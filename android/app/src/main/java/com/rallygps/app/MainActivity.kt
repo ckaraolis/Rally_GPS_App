@@ -13,7 +13,6 @@ import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
-import androidx.core.graphics.drawable.DrawableCompat
 import com.rallygps.app.databinding.ActivityMainBinding
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -25,6 +24,11 @@ class MainActivity : AppCompatActivity() {
     private val io = Executors.newSingleThreadExecutor()
     private var session: Session? = null
     private var tracking = false
+    private var inStage = false
+    private var stageName: String? = null
+    private var stoppedSinceMs: Long? = null
+    private var acknowledgedStop = false
+    private var crewAlertVisible = false
 
     private val permissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
@@ -53,7 +57,6 @@ class MainActivity : AppCompatActivity() {
         override fun onReceive(context: Context?, intent: Intent?) {
             if (intent?.action != TrackingActions.STATUS) return
             tracking = intent.getBooleanExtra(TrackingActions.EXTRA_TRACKING, false)
-            renderTrackingState()
 
             val error = intent.getStringExtra(TrackingActions.EXTRA_ERROR)
             if (!error.isNullOrBlank()) {
@@ -62,13 +65,37 @@ class MainActivity : AppCompatActivity() {
                 binding.errorRead.visibility = View.GONE
             }
 
+            val sectionType = intent.getStringExtra(TrackingActions.EXTRA_SECTION_TYPE)
+            val sectionLabel = intent.getStringExtra(TrackingActions.EXTRA_SECTION_LABEL)
+            val sectionName = intent.getStringExtra(TrackingActions.EXTRA_SECTION_NAME)
+            val wasInStage = inStage
+            inStage = tracking && sectionType == "stage"
+            stageName = sectionLabel ?: sectionName
+            if (!wasInStage && inStage) {
+                stoppedSinceMs = null
+                acknowledgedStop = false
+                hideCrewAlert()
+            }
+            if (wasInStage && !inStage) {
+                stoppedSinceMs = null
+                acknowledgedStop = false
+                hideCrewAlert()
+            }
+
+            val speed = if (intent.hasExtra(TrackingActions.EXTRA_SPEED)) {
+                intent.getFloatExtra(TrackingActions.EXTRA_SPEED, 0f)
+            } else null
+
+            if (inStage) {
+                updateStopWatch(speed)
+            }
+
+            renderMode()
+
             if (!intent.hasExtra(TrackingActions.EXTRA_LAT)) return
 
             val lat = intent.getDoubleExtra(TrackingActions.EXTRA_LAT, 0.0)
             val lon = intent.getDoubleExtra(TrackingActions.EXTRA_LON, 0.0)
-            val speed = if (intent.hasExtra(TrackingActions.EXTRA_SPEED)) {
-                intent.getFloatExtra(TrackingActions.EXTRA_SPEED, 0f)
-            } else null
             val heading = if (intent.hasExtra(TrackingActions.EXTRA_HEADING)) {
                 intent.getFloatExtra(TrackingActions.EXTRA_HEADING, 0f)
             } else null
@@ -76,7 +103,9 @@ class MainActivity : AppCompatActivity() {
                 intent.getFloatExtra(TrackingActions.EXTRA_ACCURACY, 0f)
             } else null
 
-            binding.speedRead.text = speed?.let { "${(it * 3.6f).toInt()} km/h" } ?: "—"
+            val speedText = speed?.let { "${(it * 3.6f).toInt()} km/h" } ?: "—"
+            binding.speedRead.text = speedText
+            binding.stageSpeed.text = "Speed $speedText"
             binding.accRead.text = accuracy?.let { "±${it.toInt()} m" } ?: "—"
             binding.headRead.text = heading?.let { "${it.toInt()}°" } ?: "—"
             binding.fixRead.text = SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(Date())
@@ -97,12 +126,28 @@ class MainActivity : AppCompatActivity() {
         binding.toggleBtn.setOnClickListener {
             if (tracking) stopTrackingService() else ensurePermissionsAndStart()
         }
+        binding.stageStopBtn.setOnClickListener { stopTrackingService() }
         binding.changeCarBtn.setOnClickListener {
             stopTrackingService()
             SessionStore.clear(this)
             session = null
             showSetupPanel()
         }
+
+        val sendCrew = { status: String ->
+            acknowledgedStop = true
+            hideCrewAlert()
+            sendCrewStatus(status)
+            Toast.makeText(
+                this,
+                if (status == "ok") "GREEN OK sent to race control" else "RED SOS sent to race control",
+                Toast.LENGTH_LONG
+            ).show()
+        }
+        binding.okBtn.setOnClickListener { sendCrew("ok") }
+        binding.sosBtn.setOnClickListener { sendCrew("sos") }
+        binding.alertOkBtn.setOnClickListener { sendCrew("ok") }
+        binding.alertSosBtn.setOnClickListener { sendCrew("sos") }
     }
 
     override fun onStart() {
@@ -119,6 +164,42 @@ class MainActivity : AppCompatActivity() {
     override fun onStop() {
         unregisterReceiver(statusReceiver)
         super.onStop()
+    }
+
+    private fun updateStopWatch(speed: Float?) {
+        val moving = (speed ?: 0f) > STOPPED_SPEED_MPS
+        if (moving) {
+            stoppedSinceMs = null
+            acknowledgedStop = false
+            hideCrewAlert()
+            return
+        }
+        val now = System.currentTimeMillis()
+        if (stoppedSinceMs == null) stoppedSinceMs = now
+        val stoppedFor = now - (stoppedSinceMs ?: now)
+        if (stoppedFor >= STOPPED_ALERT_MS && !acknowledgedStop) {
+            showCrewAlert()
+        }
+    }
+
+    private fun showCrewAlert() {
+        crewAlertVisible = true
+        binding.crewAlert.visibility = View.VISIBLE
+        binding.trackPanel.visibility = View.GONE
+        binding.stagePanel.visibility = View.GONE
+        binding.setupPanel.visibility = View.GONE
+    }
+
+    private fun hideCrewAlert() {
+        crewAlertVisible = false
+        binding.crewAlert.visibility = View.GONE
+    }
+
+    private fun sendCrewStatus(status: String) {
+        val intent = Intent(this, TrackingService::class.java)
+            .setAction(TrackingService.ACTION_CREW_STATUS)
+            .putExtra(TrackingService.EXTRA_CREW_STATUS, status)
+        startService(intent)
     }
 
     private fun joinRally() {
@@ -217,52 +298,66 @@ class MainActivity : AppCompatActivity() {
         val intent = Intent(this, TrackingService::class.java)
         ContextCompat.startForegroundService(this, intent)
         tracking = true
-        renderTrackingState()
+        renderMode()
     }
 
     private fun stopTrackingService() {
         val intent = Intent(this, TrackingService::class.java).setAction(TrackingService.ACTION_STOP)
         startService(intent)
         tracking = false
-        renderTrackingState()
+        inStage = false
+        hideCrewAlert()
+        renderMode()
     }
 
     private fun showSetupPanel() {
         binding.setupPanel.visibility = View.VISIBLE
         binding.trackPanel.visibility = View.GONE
+        binding.stagePanel.visibility = View.GONE
+        hideCrewAlert()
         binding.serverUrl.setText(SessionStore.loadServerUrl(this))
     }
 
     private fun showTrackPanel() {
         val current = session ?: return
         binding.setupPanel.visibility = View.GONE
-        binding.trackPanel.visibility = View.VISIBLE
         binding.plateNumber.text = "#${current.carNumber}"
         binding.plateName.text = current.driverName
-        renderTrackingState()
+        renderMode()
     }
 
-    private fun renderTrackingState() {
-        if (tracking) {
-            binding.statusText.setText(R.string.status_tracking)
-            binding.statusHint.setText(R.string.status_hint_tracking)
-            binding.statusText.setTextColor(ContextCompat.getColor(this, R.color.go))
-            binding.toggleBtn.setText(R.string.stop_tracking)
-            binding.toggleBtn.backgroundTintList =
-                ContextCompat.getColorStateList(this, R.color.stop)
-            binding.toggleBtn.setTextColor(ContextCompat.getColor(this, android.R.color.white))
-            DrawableCompat.setTint(
-                binding.statusLamp.background,
-                ContextCompat.getColor(this, R.color.panel)
-            )
+    private fun renderMode() {
+        if (crewAlertVisible) return
+        if (session == null) {
+            showSetupPanel()
+            return
+        }
+        binding.setupPanel.visibility = View.GONE
+        if (tracking && inStage) {
+            binding.trackPanel.visibility = View.GONE
+            binding.stagePanel.visibility = View.VISIBLE
+            binding.stageName.text = stageName ?: "SPECIAL STAGE"
+            binding.stageFlag.text = "GREEN FLAG"
         } else {
-            binding.statusText.setText(R.string.status_ready)
-            binding.statusHint.setText(R.string.status_hint_ready)
-            binding.statusText.setTextColor(ContextCompat.getColor(this, R.color.ink))
-            binding.toggleBtn.setText(R.string.start_tracking)
-            binding.toggleBtn.backgroundTintList =
-                ContextCompat.getColorStateList(this, R.color.go)
-            binding.toggleBtn.setTextColor(ContextCompat.getColor(this, R.color.black))
+            binding.stagePanel.visibility = View.GONE
+            binding.trackPanel.visibility = View.VISIBLE
+            if (tracking) {
+                binding.statusText.setText(R.string.status_tracking)
+                binding.statusHint.setText(R.string.status_hint_tracking)
+                binding.statusText.setTextColor(ContextCompat.getColor(this, R.color.go))
+                binding.toggleBtn.setText(R.string.stop_tracking)
+                binding.toggleBtn.backgroundTintList =
+                    ContextCompat.getColorStateList(this, R.color.stop)
+                binding.toggleBtn.setTextColor(ContextCompat.getColor(this, android.R.color.white))
+            } else {
+                binding.statusText.setText(R.string.status_ready)
+                binding.statusHint.setText(R.string.status_hint_ready)
+                binding.statusText.setTextColor(ContextCompat.getColor(this, R.color.ink))
+                binding.toggleBtn.setText(R.string.start_tracking)
+                binding.toggleBtn.backgroundTintList =
+                    ContextCompat.getColorStateList(this, R.color.go)
+                binding.toggleBtn.setTextColor(ContextCompat.getColor(this, R.color.black))
+            }
         }
     }
 
@@ -274,5 +369,10 @@ class MainActivity : AppCompatActivity() {
         binding.errorRead.visibility = View.VISIBLE
         binding.errorRead.text = message
         Toast.makeText(this, message, Toast.LENGTH_LONG).show()
+    }
+
+    companion object {
+        private const val STOPPED_SPEED_MPS = 1.2f // ~4.3 km/h
+        private const val STOPPED_ALERT_MS = 20_000L
     }
 }

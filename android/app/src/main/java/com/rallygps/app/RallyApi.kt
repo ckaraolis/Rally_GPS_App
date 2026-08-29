@@ -59,7 +59,7 @@ class RallyApi(baseUrl: String) {
         heading: Float?,
         speed: Float?,
         accuracy: Float?
-    ) {
+    ): PingResult {
         val payload = JSONObject()
             .put("id", id)
             .put("token", token)
@@ -76,9 +76,38 @@ class RallyApi(baseUrl: String) {
 
         client.newCall(request).execute().use { response ->
             val text = response.body?.string().orEmpty()
+            val json = runCatching { JSONObject(text) }.getOrElse { JSONObject() }
             if (!response.isSuccessful) {
-                val json = runCatching { JSONObject(text) }.getOrElse { JSONObject() }
                 throw IllegalStateException(json.optString("error", "Ping failed (${response.code})"))
+            }
+            val section = json.optJSONObject("section")
+            return PingResult(
+                sectionType = section?.optString("type")?.ifBlank { null },
+                sectionName = section?.optString("name")?.ifBlank { null },
+                sectionLabel = section?.optString("label")?.ifBlank { null },
+                sectionId = section?.optString("id")?.ifBlank { null }
+            )
+        }
+    }
+
+    fun crewStatus(id: String, token: String, status: String) {
+        val payload = JSONObject()
+            .put("id", id)
+            .put("token", token)
+            .put("status", status)
+            .toString()
+            .toRequestBody(jsonType)
+
+        val request = Request.Builder()
+            .url("$root/api/crew-status")
+            .post(payload)
+            .build()
+
+        client.newCall(request).execute().use { response ->
+            if (!response.isSuccessful) {
+                val text = response.body?.string().orEmpty()
+                val json = runCatching { JSONObject(text) }.getOrElse { JSONObject() }
+                throw IllegalStateException(json.optString("error", "Crew status failed (${response.code})"))
             }
         }
     }

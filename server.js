@@ -53,6 +53,7 @@ function serializeCar(car, { includeTrail = false } = {}) {
     live: isLive(car),
     last: car.last,
     section: car.section || null,
+    crewStatus: car.crewStatus || null,
     trailCount: Array.isArray(car.trail) ? car.trail.length : 0,
     ...(includeTrail ? { trail: car.trail || [] } : {}),
   };
@@ -165,13 +166,40 @@ app.post(
 
     try {
       const sections = await store.listSections();
+      const previousStageId = car.section?.type === "stage" ? car.section.id : null;
       car.section = detectSection({ lat, lon }, sections);
+      const nowStageId = car.section?.type === "stage" ? car.section.id : null;
+      if (nowStageId !== previousStageId) {
+        car.crewStatus = null;
+      }
     } catch (err) {
       console.error("section detect failed", err.message);
     }
 
     await store.saveCar(car);
-    res.json({ ok: true, receivedAt: ts, section: car.section || null });
+    res.json({ ok: true, receivedAt: ts, section: car.section || null, crewStatus: car.crewStatus || null });
+  })
+);
+
+app.post(
+  "/api/crew-status",
+  asyncHandler(async (req, res) => {
+    const status = String(req.body.status || "").toLowerCase();
+    if (status !== "ok" && status !== "sos") {
+      return res.status(400).json({ error: "status must be ok or sos." });
+    }
+    const car = await store.getCar(req.body.id);
+    if (!car || car.token !== req.body.token) {
+      return res.status(401).json({ error: "Unknown car session." });
+    }
+    car.crewStatus = {
+      status,
+      ts: Date.now(),
+      stageId: car.section?.id || null,
+      stageName: car.section?.name || car.section?.label || null,
+    };
+    await store.saveCar(car);
+    res.json({ ok: true, crewStatus: car.crewStatus });
   })
 );
 

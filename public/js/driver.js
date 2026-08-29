@@ -1,5 +1,7 @@
 const setupPanel = document.getElementById("setupPanel");
 const trackPanel = document.getElementById("trackPanel");
+const stagePanel = document.getElementById("stagePanel");
+const crewAlert = document.getElementById("crewAlert");
 const joinForm = document.getElementById("joinForm");
 const toggleBtn = document.getElementById("toggleBtn");
 const statusLamp = document.getElementById("statusLamp");
@@ -9,11 +11,18 @@ const errorRead = document.getElementById("errorRead");
 const secureNote = document.getElementById("secureNote");
 
 const KEY = "rallyGpsSession";
+const STOPPED_SPEED_MPS = 1.2;
+const STOPPED_ALERT_MS = 20_000;
+
 let session = null;
 let watchId = null;
 let wakeLock = null;
 let tracking = false;
 let lastFix = null;
+let inStage = false;
+let stageName = null;
+let stoppedSinceMs = null;
+let acknowledgedStop = false;
 
 if (!window.isSecureContext) {
   secureNote.textContent =
@@ -57,10 +66,33 @@ toggleBtn.addEventListener("click", () => {
   if (tracking) stopTracking();
   else startTracking();
 });
+document.getElementById("stageStopBtn").addEventListener("click", () => stopTracking());
+
+async function sendCrew(status) {
+  acknowledgedStop = true;
+  hideCrewAlert();
+  if (!session) return;
+  try {
+    await fetch("/api/crew-status", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id: session.id, token: session.token, status }),
+    });
+  } catch {
+    /* ignore */
+  }
+}
+
+document.getElementById("okBtn").addEventListener("click", () => sendCrew("ok"));
+document.getElementById("sosBtn").addEventListener("click", () => sendCrew("sos"));
+document.getElementById("alertOkBtn").addEventListener("click", () => sendCrew("ok"));
+document.getElementById("alertSosBtn").addEventListener("click", () => sendCrew("sos"));
 
 function showTrack() {
   setupPanel.classList.add("hidden");
   trackPanel.classList.remove("hidden");
+  stagePanel.classList.add("hidden");
+  hideCrewAlert();
   document.getElementById("plateNumber").textContent = `#${session.carNumber}`;
   document.getElementById("plateName").textContent = session.driverName;
 }
@@ -79,6 +111,47 @@ function showError(message) {
   }
   errorRead.textContent = message;
   errorRead.classList.remove("hidden");
+}
+
+function renderMode() {
+  if (!crewAlert.classList.contains("hidden")) return;
+  if (tracking && inStage) {
+    trackPanel.classList.add("hidden");
+    stagePanel.classList.remove("hidden");
+    document.getElementById("stageName").textContent = stageName || "SPECIAL STAGE";
+    document.getElementById("stageFlag").textContent = "GREEN FLAG";
+  } else {
+    stagePanel.classList.add("hidden");
+    if (session) trackPanel.classList.remove("hidden");
+  }
+}
+
+function showCrewAlert() {
+  crewAlert.classList.remove("hidden");
+  trackPanel.classList.add("hidden");
+  stagePanel.classList.add("hidden");
+  setupPanel.classList.add("hidden");
+}
+
+function hideCrewAlert() {
+  crewAlert.classList.add("hidden");
+}
+
+function updateStopWatch(speed) {
+  if (!inStage) return;
+  const moving = speed != null && !Number.isNaN(speed) && speed > STOPPED_SPEED_MPS;
+  if (moving) {
+    stoppedSinceMs = null;
+    acknowledgedStop = false;
+    hideCrewAlert();
+    renderMode();
+    return;
+  }
+  const now = Date.now();
+  if (stoppedSinceMs == null) stoppedSinceMs = now;
+  if (now - stoppedSinceMs >= STOPPED_ALERT_MS && !acknowledgedStop) {
+    showCrewAlert();
+  }
 }
 
 async function startTracking() {
@@ -102,6 +175,8 @@ async function startTracking() {
 
 async function stopTracking() {
   tracking = false;
+  inStage = false;
+  hideCrewAlert();
   if (watchId != null) {
     navigator.geolocation.clearWatch(watchId);
     watchId = null;
@@ -110,6 +185,7 @@ async function stopTracking() {
   toggleBtn.textContent = "Start tracking";
   toggleBtn.className = "btn btn-start";
   setLamp("lamp-idle", "STOPPED", "Tracking is off. Tap start when you are ready.");
+  renderMode();
   if (session) {
     try {
       await fetch("/api/stop", {
@@ -126,8 +202,10 @@ async function stopTracking() {
 async function onFix(pos) {
   lastFix = pos;
   const { latitude: lat, longitude: lon, heading, speed, accuracy } = pos.coords;
-  document.getElementById("speedRead").textContent =
+  const speedText =
     speed == null || Number.isNaN(speed) ? "—" : `${Math.round(speed * 3.6)} km/h`;
+  document.getElementById("speedRead").textContent = speedText;
+  document.getElementById("stageSpeed").textContent = `Speed ${speedText}`;
   document.getElementById("accRead").textContent =
     accuracy == null ? "—" : `±${Math.round(accuracy)} m`;
   document.getElementById("headRead").textContent =
@@ -149,13 +227,30 @@ async function onFix(pos) {
         accuracy: accuracy == null || Number.isNaN(accuracy) ? null : accuracy,
       }),
     });
+    const data = await res.json().catch(() => ({}));
     if (res.status === 401) {
       localStorage.removeItem(KEY);
       await stopTracking();
       showError("This car was taken over by another phone. Join again.");
       setupPanel.classList.remove("hidden");
       trackPanel.classList.add("hidden");
+      return;
     }
+    const wasInStage = inStage;
+    inStage = Boolean(data.section && data.section.type === "stage");
+    stageName = data.section?.label || data.section?.name || null;
+    if (!wasInStage && inStage) {
+      stoppedSinceMs = null;
+      acknowledgedStop = false;
+      hideCrewAlert();
+    }
+    if (wasInStage && !inStage) {
+      stoppedSinceMs = null;
+      acknowledgedStop = false;
+      hideCrewAlert();
+    }
+    updateStopWatch(speed);
+    renderMode();
   } catch {
     setLamp("lamp-warn", "NO NETWORK", "GPS is on this phone, but the server did not receive it");
   }

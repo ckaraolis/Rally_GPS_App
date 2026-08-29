@@ -21,4 +21,7 @@ alter table rally_cars enable row level security;
 alter table rally_cars
   add column if not exists section jsonb;
 
+alter table rally_cars
+  add column if not exists crew_status jsonb;
+
 -- Also run supabase/schema_routes.sql for KMZ route sections.

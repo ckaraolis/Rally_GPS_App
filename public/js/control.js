@@ -94,11 +94,19 @@ function popupHtml(car) {
   const speed =
     car.last?.speed == null ? "—" : `${Math.round(car.last.speed * 3.6)} km/h`;
   const section = car.section?.label ? `<div>${escapeHtml(car.section.label)}</div>` : "";
+  const crew = car.crewStatus?.status;
+  const crewLine =
+    crew === "sos"
+      ? `<div style="color:#ff3b30;font-weight:800">RED SOS</div>`
+      : crew === "ok"
+        ? `<div style="color:#3ddc84;font-weight:800">GREEN OK</div>`
+        : "";
   return `<div class="car-popup">
     <strong>#${escapeHtml(car.carNumber)}</strong>
     <div>${escapeHtml(car.driverName)}</div>
     <div>Speed: ${speed}</div>
     ${section}
+    ${crewLine}
   </div>`;
 }
 
@@ -194,12 +202,15 @@ function renderList(cars) {
       const speed =
         car.last?.speed == null ? "—" : `${Math.round(car.last.speed * 3.6)} km/h`;
       const section = car.section?.label || "Off route";
+      const crew = car.crewStatus?.status;
+      const crewLabel =
+        crew === "sos" ? "RED SOS" : crew === "ok" ? "GREEN OK" : "";
       const canDownload = (car.trailCount || 0) > 1;
       return `<li data-id="${car.id}">
         <span class="dot" style="background:${car.color}"></span>
         <div>
           <strong>#${escapeHtml(car.carNumber)} ${escapeHtml(car.driverName)}</strong>
-          <small>${state} · ${speed}</small>
+          <small>${state} · ${speed}${crewLabel ? ` · ${crewLabel}` : ""}</small>
           <small class="section-line">${escapeHtml(section)}</small>
         </div>
         ${

@@ -321,9 +321,56 @@ input {
 .car-popup strong {
   font-size: 1.2rem;
 }
-.leaflet-popup-content-wrapper {
-  border-radius: 0;
+.stage-panel { display: grid; gap: 14px; }
+.stage-name {
+  text-align: center;
+  padding: 18px 12px;
+  background: #2a0f0f;
+  color: var(--stop);
+  font-size: 1.8rem;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
 }
+.stage-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  min-height: 220px;
+}
+.stage-flag-box {
+  display: grid;
+  place-content: center;
+  text-align: center;
+  background: #10200c;
+  padding: 12px;
+}
+.stage-flag-box small {
+  color: var(--muted);
+  letter-spacing: 0.14em;
+}
+.stage-flag-box strong {
+  color: var(--go);
+  font-size: 2rem;
+  letter-spacing: 0.08em;
+}
+.stage-actions {
+  display: grid;
+  gap: 10px;
+}
+.stage-half { min-height: 0; height: 100%; }
+.crew-alert {
+  display: grid;
+  gap: 12px;
+  text-align: center;
+}
+.crew-alert h2 {
+  margin: 0;
+  color: var(--amber);
+  letter-spacing: 0.1em;
+}
+.alert-btn { min-height: 110px; line-height: 1.2; }
+
 
 
 .leaflet-marker-num {

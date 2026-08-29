@@ -70,6 +70,29 @@
 
       <button id="toggleBtn" type="button" class="btn btn-start">Start tracking</button>
     </section>
+
+    <section id="stagePanel" class="stage-panel hidden">
+      <div id="stageName" class="stage-name">SPECIAL STAGE</div>
+      <div class="stage-grid">
+        <div class="stage-flag-box">
+          <small>STAGE STATUS</small>
+          <strong id="stageFlag">GREEN FLAG</strong>
+        </div>
+        <div class="stage-actions">
+          <button id="okBtn" type="button" class="btn btn-start stage-half">OK</button>
+          <button id="sosBtn" type="button" class="btn btn-stop stage-half">SOS</button>
+        </div>
+      </div>
+      <p id="stageSpeed" class="coords">—</p>
+      <button id="stageStopBtn" type="button" class="btn btn-stop">Stop tracking</button>
+    </section>
+
+    <section id="crewAlert" class="crew-alert hidden">
+      <h2>STOPPED ON STAGE</h2>
+      <p>If you had an off or accident, confirm both crew are OK</p>
+      <button id="alertOkBtn" type="button" class="btn btn-start alert-btn">GREEN OK<br/>Both crew OK</button>
+      <button id="alertSosBtn" type="button" class="btn btn-stop alert-btn">RED SOS<br/>Need help</button>
+    </section>
   </main>
   <script src="/js/driver.js"></script>
 </body>

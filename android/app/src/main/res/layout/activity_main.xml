@@ -328,6 +328,173 @@
                     app:cornerRadius="0dp"
                     app:strokeColor="@color/line" />
             </LinearLayout>
+
+            <LinearLayout
+                android:id="@+id/stagePanel"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:visibility="gone">
+
+                <TextView
+                    android:id="@+id/stageName"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:background="#2a0f0f"
+                    android:gravity="center"
+                    android:padding="18dp"
+                    android:text="STAGE"
+                    android:textAllCaps="true"
+                    android:textColor="@color/stop"
+                    android:textSize="28sp"
+                    android:textStyle="bold" />
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="220dp"
+                    android:layout_marginTop="12dp"
+                    android:orientation="horizontal">
+
+                    <LinearLayout
+                        android:layout_width="0dp"
+                        android:layout_height="match_parent"
+                        android:layout_marginEnd="6dp"
+                        android:layout_weight="1"
+                        android:background="#10200c"
+                        android:gravity="center"
+                        android:orientation="vertical"
+                        android:padding="12dp">
+
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="STAGE STATUS"
+                            android:textAllCaps="true"
+                            android:textColor="@color/muted"
+                            android:textSize="14sp" />
+
+                        <TextView
+                            android:id="@+id/stageFlag"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="8dp"
+                            android:gravity="center"
+                            android:text="GREEN FLAG"
+                            android:textAllCaps="true"
+                            android:textColor="@color/go"
+                            android:textSize="32sp"
+                            android:textStyle="bold" />
+                    </LinearLayout>
+
+                    <LinearLayout
+                        android:layout_width="0dp"
+                        android:layout_height="match_parent"
+                        android:layout_marginStart="6dp"
+                        android:layout_weight="1"
+                        android:orientation="vertical">
+
+                        <com.google.android.material.button.MaterialButton
+                            android:id="@+id/okBtn"
+                            android:layout_width="match_parent"
+                            android:layout_height="0dp"
+                            android:layout_marginBottom="6dp"
+                            android:layout_weight="1"
+                            android:backgroundTint="@color/go"
+                            android:text="OK"
+                            android:textColor="@color/black"
+                            android:textSize="28sp"
+                            android:textStyle="bold"
+                            app:cornerRadius="0dp" />
+
+                        <com.google.android.material.button.MaterialButton
+                            android:id="@+id/sosBtn"
+                            android:layout_width="match_parent"
+                            android:layout_height="0dp"
+                            android:layout_marginTop="6dp"
+                            android:layout_weight="1"
+                            android:backgroundTint="@color/stop"
+                            android:text="SOS"
+                            android:textColor="@android:color/white"
+                            android:textSize="28sp"
+                            android:textStyle="bold"
+                            app:cornerRadius="0dp" />
+                    </LinearLayout>
+                </LinearLayout>
+
+                <TextView
+                    android:id="@+id/stageSpeed"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="12dp"
+                    android:gravity="center"
+                    android:text="—"
+                    android:textColor="@color/ink"
+                    android:textSize="22sp" />
+
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/stageStopBtn"
+                    android:layout_width="match_parent"
+                    android:layout_height="56dp"
+                    android:layout_marginTop="12dp"
+                    android:backgroundTint="@color/stop"
+                    android:text="@string/stop_tracking"
+                    android:textColor="@android:color/white"
+                    android:textStyle="bold"
+                    app:cornerRadius="0dp" />
+            </LinearLayout>
+
+            <LinearLayout
+                android:id="@+id/crewAlert"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:background="#10110F"
+                android:orientation="vertical"
+                android:padding="12dp"
+                android:visibility="gone">
+
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:gravity="center"
+                    android:padding="12dp"
+                    android:text="STOPPED ON STAGE"
+                    android:textAllCaps="true"
+                    android:textColor="@color/amber"
+                    android:textSize="26sp"
+                    android:textStyle="bold" />
+
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:gravity="center"
+                    android:paddingBottom="16dp"
+                    android:text="If you had an off or accident, confirm both crew are OK"
+                    android:textColor="@color/ink"
+                    android:textSize="18sp" />
+
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/alertOkBtn"
+                    android:layout_width="match_parent"
+                    android:layout_height="120dp"
+                    android:layout_marginBottom="10dp"
+                    android:backgroundTint="@color/go"
+                    android:text="GREEN OK\nBoth crew OK"
+                    android:textColor="@color/black"
+                    android:textSize="26sp"
+                    android:textStyle="bold"
+                    app:cornerRadius="0dp" />
+
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/alertSosBtn"
+                    android:layout_width="match_parent"
+                    android:layout_height="120dp"
+                    android:backgroundTint="@color/stop"
+                    android:text="RED SOS\nNeed help"
+                    android:textColor="@android:color/white"
+                    android:textSize="26sp"
+                    android:textStyle="bold"
+                    app:cornerRadius="0dp" />
+            </LinearLayout>
         </FrameLayout>
     </LinearLayout>
 </ScrollView>
