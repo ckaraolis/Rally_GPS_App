@@ -171,7 +171,7 @@ class MainActivity : AppCompatActivity() {
                 raw.contains("timeout", true) ||
                 raw.contains("ECONNREFUSED", true) ||
                 raw.contains("ENETUNREACH", true) ->
-                "Cannot reach server at $server. Use http://192.168.20.234:3000 and keep phone + PC on the same Wi‑Fi."
+                "Cannot reach server at $server. Check internet, or use https://rallygpsapp.vercel.app"
             raw.contains("CLEARTEXT", true) ->
                 "Phone blocked plain HTTP. Use the RallyGPS.apk from this project (cleartext is allowed)."
             raw.isBlank() -> "Could not reach the Rally server at $server"

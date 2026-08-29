@@ -279,7 +279,40 @@ input {
 }
 .car-list strong { display: block; font-size: 1.3rem; text-transform: uppercase; }
 .car-list small { color: var(--muted); }
-.car-list .empty { display: block; color: var(--muted); cursor: default; }
+.car-list .section-line {
+  display: block;
+  color: var(--amber);
+  margin-top: 2px;
+}
+.file-btn {
+  display: inline-flex;
+  justify-content: center;
+  align-items: center;
+  width: 100%;
+  min-height: 48px;
+  margin-bottom: 8px;
+  background: var(--go);
+  color: #111;
+  font-family: var(--font);
+  font-size: 1.1rem;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+.mini-toggle {
+  border: 1px solid var(--line);
+  background: transparent;
+  color: var(--muted);
+  font-family: var(--font);
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  padding: 6px 8px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
 
 .leaflet-marker-num {
   font-family: var(--font);

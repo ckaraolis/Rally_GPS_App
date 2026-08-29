@@ -57,7 +57,7 @@ object SessionStore {
             return ServerConfig.DEFAULT_PUBLIC_URL
         }
         return context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-            .getString("serverUrl", "https://usgs-takes-liberty-counseling.trycloudflare.com")
-            ?: "https://usgs-takes-liberty-counseling.trycloudflare.com"
+            .getString("serverUrl", "https://rallygpsapp.vercel.app")
+            ?: "https://rallygpsapp.vercel.app"
     }
 }

@@ -9,6 +9,7 @@ create table if not exists rally_cars (
   tracking boolean not null default false,
   last jsonb,
   trail jsonb not null default '[]'::jsonb,
+  section jsonb,
   updated_at timestamptz not null default now()
 );
 
@@ -17,9 +18,7 @@ create unique index if not exists rally_cars_car_number_lower_idx
 
 alter table rally_cars enable row level security;
 
--- Server uses the service role key (bypasses RLS).
--- If you use the anon key instead, uncomment these open policies (dev only):
--- create policy "rally_cars_select" on rally_cars for select using (true);
--- create policy "rally_cars_insert" on rally_cars for insert with check (true);
--- create policy "rally_cars_update" on rally_cars for update using (true);
--- create policy "rally_cars_delete" on rally_cars for delete using (true);
+alter table rally_cars
+  add column if not exists section jsonb;
+
+-- Also run supabase/schema_routes.sql for KMZ route sections.

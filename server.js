@@ -3,6 +3,8 @@ const os = require("os");
 const path = require("path");
 const express = require("express");
 const { getStore, hasSupabase, pickColor, newToken, PALETTE } = require("./lib/store");
+const { parseKmzOrKml, buildLabel } = require("./lib/kml");
+const { detectSection, haversineMeters } = require("./lib/geo");
 
 const app = express();
 const PORT = Number(process.env.PORT) || 3000;
@@ -13,7 +15,7 @@ const store = getStore();
 
 app.set("trust proxy", 1);
 app.disable("x-powered-by");
-app.use(express.json({ limit: "32kb" }));
+app.use(express.json({ limit: "15mb" }));
 app.use(express.static(path.join(__dirname, "public")));
 
 function publicBase(req) {
@@ -37,19 +39,6 @@ function kmlColor(hex, alpha = "ff") {
   return `${alpha}${h.slice(4, 6)}${h.slice(2, 4)}${h.slice(0, 2)}`;
 }
 
-function haversineMeters(a, b) {
-  const R = 6371000;
-  const toRad = (d) => (d * Math.PI) / 180;
-  const dLat = toRad(b.lat - a.lat);
-  const dLon = toRad(b.lon - a.lon);
-  const lat1 = toRad(a.lat);
-  const lat2 = toRad(b.lat);
-  const h =
-    Math.sin(dLat / 2) ** 2 +
-    Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLon / 2) ** 2;
-  return 2 * R * Math.asin(Math.min(1, Math.sqrt(h)));
-}
-
 function isLive(car) {
   return Boolean(car.tracking && car.last && Date.now() - car.last.ts < STALE_MS);
 }
@@ -64,6 +53,7 @@ function serializeCar(car) {
     live: isLive(car),
     last: car.last,
     trail: car.trail,
+    section: car.section || null,
   };
 }
 
@@ -172,8 +162,15 @@ app.post(
       if (car.trail.length > MAX_TRAIL) car.trail.splice(0, car.trail.length - MAX_TRAIL);
     }
 
+    try {
+      const sections = await store.listSections();
+      car.section = detectSection({ lat, lon }, sections);
+    } catch (err) {
+      console.error("section detect failed", err.message);
+    }
+
     await store.saveCar(car);
-    res.json({ ok: true, receivedAt: ts });
+    res.json({ ok: true, receivedAt: ts, section: car.section || null });
   })
 );
 
@@ -198,6 +195,94 @@ app.get(
       serverTime: Date.now(),
       cars: cars.map(serializeCar),
     });
+  })
+);
+
+app.get(
+  "/api/sections",
+  asyncHandler(async (_req, res) => {
+    const sections = await store.listSections();
+    res.json({ sections });
+  })
+);
+
+app.post(
+  "/api/sections/upload",
+  asyncHandler(async (req, res) => {
+    const filename = String(req.body.filename || "route.kmz");
+    const contentBase64 = String(req.body.contentBase64 || "");
+    const replace = req.body.replace !== false;
+    if (!contentBase64) {
+      return res.status(400).json({ error: "contentBase64 is required (KMZ or KML file)." });
+    }
+
+    const buffer = Buffer.from(contentBase64, "base64");
+    if (!buffer.length) {
+      return res.status(400).json({ error: "Empty file." });
+    }
+    if (buffer.length > 12 * 1024 * 1024) {
+      return res.status(400).json({ error: "File too large (max 12 MB)." });
+    }
+
+    const parsed = await parseKmzOrKml(buffer, filename);
+    if (!parsed.length) {
+      return res.status(400).json({
+        error:
+          "No LineString/Polygon placemarks found. Export road sections and stages as paths in Google Earth.",
+      });
+    }
+
+    const saved = replace
+      ? await store.replaceSections(parsed)
+      : await store.replaceSections([...(await store.listSections()), ...parsed]);
+
+    res.json({
+      ok: true,
+      count: saved.length,
+      stages: saved.filter((s) => s.type === "stage").length,
+      roads: saved.filter((s) => s.type === "road").length,
+      sections: saved.map((s) => ({
+        id: s.id,
+        name: s.name,
+        type: s.type,
+        label: s.label,
+        points: s.coordinates.length,
+      })),
+    });
+  })
+);
+
+app.patch(
+  "/api/sections/:id",
+  asyncHandler(async (req, res) => {
+    const type = req.body.type;
+    const name = req.body.name != null ? String(req.body.name).trim() : undefined;
+    const patch = {};
+    if (name) patch.name = name;
+    if (type === "stage" || type === "road") {
+      patch.type = type;
+      patch.label = buildLabel(name || (await store.listSections()).find((s) => s.id === req.params.id)?.name || "Section", type);
+    }
+    if (typeof req.body.active === "boolean") patch.active = req.body.active;
+    const updated = await store.updateSection(req.params.id, patch);
+    if (!updated) return res.status(404).json({ error: "Section not found." });
+    res.json({ section: updated });
+  })
+);
+
+app.delete(
+  "/api/sections",
+  asyncHandler(async (_req, res) => {
+    await store.clearSections();
+    res.json({ ok: true });
+  })
+);
+
+app.delete(
+  "/api/sections/:id",
+  asyncHandler(async (req, res) => {
+    await store.deleteSection(req.params.id);
+    res.json({ ok: true });
   })
 );
 
@@ -229,16 +314,16 @@ app.get("/earth-link.kml", (req, res) => {
 app.get(
   "/earth.kml",
   asyncHandler(async (_req, res) => {
-    const cars = await store.listCars();
+    const [cars, sections] = await Promise.all([store.listCars(), store.listSections()]);
     res.set({
       "Content-Type": "application/vnd.google-earth.kml+xml; charset=utf-8",
       "Cache-Control": "no-store",
     });
-    res.send(buildLiveKml(cars));
+    res.send(buildLiveKml(cars, sections));
   })
 );
 
-function buildLiveKml(cars) {
+function buildLiveKml(cars, sections = []) {
   const list = cars.filter((car) => car.last);
   const styles = PALETTE.map(
     (color, i) => `    <Style id="car${i}">
@@ -259,6 +344,15 @@ function buildLiveKml(cars) {
     </Style>`
   ).join("\n");
 
+  const routeStyles = `    <Style id="roadStyle">
+      <LineStyle><color>${kmlColor("#ffc14a", "cc")}</color><width>3</width></LineStyle>
+      <PolyStyle><color>${kmlColor("#ffc14a", "44")}</color></PolyStyle>
+    </Style>
+    <Style id="stageStyle">
+      <LineStyle><color>${kmlColor("#ff3b30", "ee")}</color><width>5</width></LineStyle>
+      <PolyStyle><color>${kmlColor("#ff3b30", "55")}</color></PolyStyle>
+    </Style>`;
+
   const carMarks = list
     .map((car) => {
       const live = isLive(car);
@@ -267,10 +361,11 @@ function buildLiveKml(cars) {
       const ageSec = Math.max(0, Math.round((Date.now() - car.last.ts) / 1000));
       const headingTag =
         car.last.heading == null ? "" : `<heading>${xml(car.last.heading)}</heading>`;
+      const sectionLabel = car.section?.label ? `<br/>${car.section.label}` : "";
       const status = live ? "LIVE" : car.tracking ? "SIGNAL LOST" : "STOPPED";
       return `      <Placemark>
         <name>${xml("#" + car.carNumber + "  " + car.driverName)}</name>
-        <description><![CDATA[${status}<br/>Speed: ${speedKmh}<br/>Updated: ${ageSec}s ago]]></description>
+        <description><![CDATA[${status}<br/>Speed: ${speedKmh}<br/>Updated: ${ageSec}s ago${sectionLabel}]]></description>
         <Style>
           <IconStyle>
             <color>${kmlColor(car.color)}</color>
@@ -309,6 +404,33 @@ function buildLiveKml(cars) {
     })
     .join("\n");
 
+  const routeMarks = sections
+    .filter((s) => s.active !== false && Array.isArray(s.coordinates) && s.coordinates.length >= 2)
+    .map((section) => {
+      const coords = section.coordinates.map((p) => `${p.lon},${p.lat},0`).join(" ");
+      const styleUrl = section.type === "stage" ? "#stageStyle" : "#roadStyle";
+      if (section.geometryType === "Polygon") {
+        return `      <Placemark>
+        <name>${xml(section.label)}</name>
+        <styleUrl>${styleUrl}</styleUrl>
+        <Polygon>
+          <tessellate>1</tessellate>
+          <outerBoundaryIs><LinearRing><coordinates>${coords}</coordinates></LinearRing></outerBoundaryIs>
+        </Polygon>
+      </Placemark>`;
+      }
+      return `      <Placemark>
+        <name>${xml(section.label)}</name>
+        <styleUrl>${styleUrl}</styleUrl>
+        <LineString>
+          <tessellate>1</tessellate>
+          <altitudeMode>clampToGround</altitudeMode>
+          <coordinates>${coords}</coordinates>
+        </LineString>
+      </Placemark>`;
+    })
+    .join("\n");
+
   return `<?xml version="1.0" encoding="UTF-8"?>
 <kml xmlns="http://www.opengis.net/kml/2.2">
   <Document>
@@ -316,6 +438,12 @@ function buildLiveKml(cars) {
     <open>1</open>
     <description>${list.length ? xml(list.length + " cars on course") : "Waiting for cars to start tracking."}</description>
 ${styles}
+${routeStyles}
+    <Folder>
+      <name>Route</name>
+      <open>1</open>
+${routeMarks}
+    </Folder>
     <Folder>
       <name>Cars</name>
       <open>1</open>

@@ -26,6 +26,20 @@
       <p class="hint">Download Google Earth Pro (free). Open the downloaded <code>Rally_Live_Tracking.kml</code> file. Cars update every 4 seconds while Earth stays open.</p>
     </div>
 
+    <div class="earth-box">
+      <p class="eyebrow">Rally route</p>
+      <p class="hint">Upload a KMZ/KML with road sections and special stages (paths drawn in Google Earth). Cars are matched live, e.g. “Road section: Service Park → SS1”.</p>
+      <label class="file-btn">
+        Upload KMZ / KML
+        <input id="routeFile" type="file" accept=".kmz,.kml,application/vnd.google-earth.kmz,application/vnd.google-earth.kml+xml" hidden />
+      </label>
+      <button id="clearRoutes" type="button" class="btn btn-ghost">Clear route</button>
+      <p id="routeStatus" class="hint"></p>
+      <ul id="sectionList" class="car-list">
+        <li class="empty">No route uploaded yet</li>
+      </ul>
+    </div>
+
     <section>
       <p class="eyebrow">Cars on course</p>
       <ul id="carList" class="car-list">
