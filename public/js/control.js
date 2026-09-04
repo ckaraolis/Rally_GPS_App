@@ -70,13 +70,14 @@ refreshLostBtn.addEventListener("click", async () => {
   refreshLostBtn.textContent = "Refreshing…";
   try {
     const res = await fetch("/api/refresh-lost", { method: "POST" });
-    const data = await res.json();
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || "Refresh failed");
     refreshLostBtn.textContent = data.count
       ? `Asked ${data.count} lost car${data.count === 1 ? "" : "s"} to reconnect`
       : "No lost cars";
     await refresh();
-  } catch {
-    refreshLostBtn.textContent = "Refresh failed";
+  } catch (err) {
+    refreshLostBtn.textContent = err.message || "Refresh failed";
   }
   setTimeout(() => {
     refreshLostBtn.disabled = false;
@@ -308,10 +309,18 @@ function renderList(cars) {
       event.stopPropagation();
       const id = btn.getAttribute("data-refresh");
       btn.disabled = true;
-      btn.textContent = "Refresh sent";
-      await fetch(`/api/cars/${encodeURIComponent(id)}/refresh`, { method: "POST" });
-      const car = latestCars.find((c) => c.id === id);
-      if (car) car.reconnectRequested = true;
+      btn.textContent = "Sending…";
+      try {
+        const res = await fetch(`/api/cars/${encodeURIComponent(id)}/refresh`, { method: "POST" });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.error || "Refresh failed");
+        btn.textContent = "Refresh sent";
+        const car = latestCars.find((c) => c.id === id);
+        if (car) car.reconnectRequested = true;
+      } catch (err) {
+        btn.disabled = false;
+        btn.textContent = err.message || "Failed";
+      }
     });
   }
 }

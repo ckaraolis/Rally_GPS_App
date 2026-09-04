@@ -20,6 +20,7 @@ let watchId = null;
 let wakeLock = null;
 let tracking = false;
 let lastFix = null;
+let lastPingOkAt = 0;
 let inStage = false;
 let stageName = null;
 let stageId = null;
@@ -296,6 +297,7 @@ function requestFreshFix() {
 
 async function pollReconnect() {
   if (!tracking || !session) return;
+  const stale = !lastPingOkAt || Date.now() - lastPingOkAt > 15_000;
   try {
     const res = await fetch("/api/poll", {
       method: "POST",
@@ -303,8 +305,14 @@ async function pollReconnect() {
       body: JSON.stringify({ id: session.id, token: session.token }),
     });
     const data = await res.json().catch(() => ({}));
-    if (!res.ok) return;
-    if (data.reconnectRequested) requestFreshFix();
+    if (!res.ok) {
+      if (stale && lastFix) await onFix(lastFix);
+      return;
+    }
+    if (data.reconnectRequested || stale) {
+      if (lastFix) await onFix(lastFix);
+      requestFreshFix();
+    }
   } catch {
     if (lastFix) {
       try {
@@ -355,6 +363,8 @@ async function onFix(pos) {
       trackPanel.classList.add("hidden");
       return;
     }
+    if (!res.ok) throw new Error(data.error || "Ping failed");
+    lastPingOkAt = Date.now();
     const wasInStage = inStage;
     sectionType = data.section?.type || null;
     sectionLabel = data.section?.label || data.section?.name || null;
@@ -446,7 +456,10 @@ async function pollStageFlag() {
 setInterval(pollStageFlag, 2000);
 
 document.addEventListener("visibilitychange", async () => {
-  if (document.visibilityState === "visible" && tracking) await requestWakeLock();
+  if (document.visibilityState === "visible" && tracking) {
+    await requestWakeLock();
+    requestFreshFix();
+  }
 });
 
 window.addEventListener("pagehide", () => {
