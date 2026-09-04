@@ -70,6 +70,7 @@ function serializeCar(car, { includeTrail = false } = {}) {
     crewStatus: car.crewStatus || null,
     flagStatus: sectionFlag(car.section).flagStatus,
     flagAcked: hasAckedFlag(car, car.section),
+    reconnectRequested: Boolean(car.reconnectRequested),
     trailCount: Array.isArray(car.trail) ? car.trail.length : 0,
     ...(includeTrail ? { trail: car.trail || [] } : {}),
   };
@@ -192,6 +193,7 @@ app.post(
       console.error("section detect failed", err.message);
     }
 
+    car.reconnectRequested = null;
     await store.saveCar(car);
     const { flagStatus, flagTs } = sectionFlag(car.section);
     res.json({
@@ -277,6 +279,50 @@ app.get(
     const car = await store.getCar(req.params.id);
     if (!car) return res.status(404).json({ error: "Car not found." });
     res.json(serializeCar(car, { includeTrail: true }));
+  })
+);
+
+app.post(
+  "/api/poll",
+  asyncHandler(async (req, res) => {
+    const car = await store.getCar(req.body.id);
+    if (!car || car.token !== req.body.token) {
+      return res.status(401).json({ error: "Unknown car session." });
+    }
+    const { flagStatus, flagTs } = sectionFlag(car.section);
+    res.json({
+      ok: true,
+      tracking: car.tracking,
+      reconnectRequested: Boolean(car.reconnectRequested),
+      section: car.section || null,
+      flagStatus,
+      flagTs,
+      flagAcked: hasAckedFlag(car, car.section),
+    });
+  })
+);
+
+app.post(
+  "/api/cars/:id/refresh",
+  asyncHandler(async (req, res) => {
+    const car = await store.getCar(req.params.id);
+    if (!car) return res.status(404).json({ error: "Car not found." });
+    car.reconnectRequested = Date.now();
+    await store.saveCar(car);
+    res.json({ ok: true, id: car.id, reconnectRequested: true });
+  })
+);
+
+app.post(
+  "/api/refresh-lost",
+  asyncHandler(async (_req, res) => {
+    const cars = await store.listCars();
+    const lost = cars.filter((car) => car.tracking && !isLive(car));
+    for (const car of lost) {
+      car.reconnectRequested = Date.now();
+      await store.saveCar(car);
+    }
+    res.json({ ok: true, count: lost.length });
   })
 );
 

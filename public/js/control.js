@@ -17,6 +17,7 @@ const routeFile = document.getElementById("routeFile");
 const clearRoutes = document.getElementById("clearRoutes");
 const routeStatus = document.getElementById("routeStatus");
 const sectionList = document.getElementById("sectionList");
+const refreshLostBtn = document.getElementById("refreshLostBtn");
 
 copyBtn.addEventListener("click", async () => {
   const url = `${location.origin}/earth.kml`;
@@ -62,6 +63,25 @@ clearRoutes.addEventListener("click", async () => {
   await fetch("/api/sections", { method: "DELETE" });
   routeStatus.textContent = "Route cleared.";
   await refreshSections();
+});
+
+refreshLostBtn.addEventListener("click", async () => {
+  refreshLostBtn.disabled = true;
+  refreshLostBtn.textContent = "Refreshing…";
+  try {
+    const res = await fetch("/api/refresh-lost", { method: "POST" });
+    const data = await res.json();
+    refreshLostBtn.textContent = data.count
+      ? `Asked ${data.count} lost car${data.count === 1 ? "" : "s"} to reconnect`
+      : "No lost cars";
+    await refresh();
+  } catch {
+    refreshLostBtn.textContent = "Refresh failed";
+  }
+  setTimeout(() => {
+    refreshLostBtn.disabled = false;
+    refreshLostBtn.textContent = "Refresh lost cars";
+  }, 2500);
 });
 
 function fileToBase64(file) {
@@ -249,6 +269,13 @@ function renderList(cars) {
                   )}/track.gpx" download>GPX</a>`
                 : ""
             }
+            ${
+              state === "LOST"
+                ? `<button type="button" class="mini-toggle" data-refresh="${car.id}">${
+                    car.reconnectRequested ? "Refresh sent" : "Refresh"
+                  }</button>`
+                : ""
+            }
           </div>
         </div>
       </li>`;
@@ -273,6 +300,18 @@ function renderList(cars) {
       if (visibleTrails.has(id)) hideCarTrail(id);
       else await showCarTrail(id, { fit: true });
       renderList(latestCars);
+    });
+  }
+
+  for (const btn of list.querySelectorAll("button[data-refresh]")) {
+    btn.addEventListener("click", async (event) => {
+      event.stopPropagation();
+      const id = btn.getAttribute("data-refresh");
+      btn.disabled = true;
+      btn.textContent = "Refresh sent";
+      await fetch(`/api/cars/${encodeURIComponent(id)}/refresh`, { method: "POST" });
+      const car = latestCars.find((c) => c.id === id);
+      if (car) car.reconnectRequested = true;
     });
   }
 }

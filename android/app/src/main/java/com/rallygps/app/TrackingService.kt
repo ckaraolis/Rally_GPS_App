@@ -7,7 +7,9 @@ import android.app.PendingIntent
 import android.app.Service
 import android.content.Intent
 import android.content.pm.ServiceInfo
+import android.location.Location
 import android.os.Build
+import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
 import androidx.core.app.NotificationCompat
@@ -17,17 +19,29 @@ import com.google.android.gms.location.LocationRequest
 import com.google.android.gms.location.LocationResult
 import com.google.android.gms.location.LocationServices
 import com.google.android.gms.location.Priority
+import com.google.android.gms.tasks.CancellationTokenSource
 import java.util.concurrent.Executors
 
 class TrackingService : Service() {
     private val executor = Executors.newSingleThreadExecutor()
+    private val handler = Handler(Looper.getMainLooper())
     private val fused by lazy { LocationServices.getFusedLocationProviderClient(this) }
     private var api: RallyApi? = null
     private var session: Session? = null
+    private var lastLocation: Location? = null
+    private var lastPingOkAt = 0L
+
+    private val pollRunnable = object : Runnable {
+        override fun run() {
+            pollAndRefresh()
+            handler.postDelayed(this, 4000L)
+        }
+    }
 
     private val locationCallback = object : LocationCallback() {
         override fun onLocationResult(result: LocationResult) {
             val location = result.lastLocation ?: return
+            lastLocation = location
             val current = session ?: return
             val client = api ?: return
 
@@ -74,6 +88,7 @@ class TrackingService : Service() {
                         flagTs = ping.flagTs,
                         flagAcked = ping.flagAcked
                     )
+                    lastPingOkAt = System.currentTimeMillis()
                 } catch (error: Exception) {
                     broadcast(
                         tracking = true,
@@ -154,6 +169,8 @@ class TrackingService : Service() {
         try {
             fused.requestLocationUpdates(request, locationCallback, Looper.getMainLooper())
             broadcast(tracking = true)
+            handler.removeCallbacks(pollRunnable)
+            handler.postDelayed(pollRunnable, 4000L)
         } catch (error: SecurityException) {
             broadcast(tracking = false, error = "Location permission missing")
             stopSelf()
@@ -161,6 +178,7 @@ class TrackingService : Service() {
     }
 
     private fun stopTracking() {
+        handler.removeCallbacks(pollRunnable)
         fused.removeLocationUpdates(locationCallback)
         val current = session
         val client = api
@@ -175,9 +193,90 @@ class TrackingService : Service() {
     }
 
     override fun onDestroy() {
+        handler.removeCallbacks(pollRunnable)
         fused.removeLocationUpdates(locationCallback)
         executor.shutdownNow()
         super.onDestroy()
+    }
+
+    private fun pollAndRefresh() {
+        val current = session ?: return
+        val client = api ?: return
+        executor.execute {
+            val requested = runCatching { client.poll(current.id, current.token) }.getOrDefault(false)
+            val stale = lastPingOkAt == 0L || System.currentTimeMillis() - lastPingOkAt > 20_000L
+            if (requested || stale) {
+                handler.post { sendFreshFix() }
+            }
+        }
+    }
+
+    private fun sendFreshFix() {
+        val current = session ?: return
+        val client = api ?: return
+        try {
+            fused.getCurrentLocation(
+                Priority.PRIORITY_HIGH_ACCURACY,
+                CancellationTokenSource().token
+            ).addOnSuccessListener { location ->
+                val fix = location ?: lastLocation ?: return@addOnSuccessListener
+                lastLocation = fix
+                pingLocation(current, client, fix)
+            }.addOnFailureListener {
+                val fix = lastLocation ?: return@addOnFailureListener
+                pingLocation(current, client, fix)
+            }
+        } catch (_: SecurityException) {
+            /* permission dropped */
+        }
+    }
+
+    private fun pingLocation(current: Session, client: RallyApi, location: Location) {
+        val heading = if (location.hasBearing()) location.bearing else null
+        val speed = if (location.hasSpeed()) location.speed else null
+        val accuracy = if (location.hasAccuracy()) location.accuracy else null
+        executor.execute {
+            try {
+                val ping = client.ping(
+                    id = current.id,
+                    token = current.token,
+                    lat = location.latitude,
+                    lon = location.longitude,
+                    heading = heading,
+                    speed = speed,
+                    accuracy = accuracy
+                )
+                lastPingOkAt = System.currentTimeMillis()
+                broadcast(
+                    tracking = true,
+                    lat = location.latitude,
+                    lon = location.longitude,
+                    speed = speed,
+                    heading = heading,
+                    accuracy = accuracy,
+                    sent = true,
+                    error = null,
+                    sectionType = ping.sectionType,
+                    sectionName = ping.sectionName,
+                    sectionLabel = ping.sectionLabel,
+                    sectionId = ping.sectionId,
+                    flagStatus = ping.flagStatus,
+                    flagTs = ping.flagTs,
+                    flagAcked = ping.flagAcked
+                )
+            } catch (error: Exception) {
+                broadcast(
+                    tracking = true,
+                    lat = location.latitude,
+                    lon = location.longitude,
+                    speed = speed,
+                    heading = heading,
+                    accuracy = accuracy,
+                    sent = false,
+                    error = error.message ?: "Network error"
+                )
+            }
+        }
     }
 
     private fun broadcast(

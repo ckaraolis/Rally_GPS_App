@@ -279,6 +279,45 @@ async function stopTracking() {
   }
 }
 
+function requestFreshFix() {
+  if (!tracking) return;
+  if (!navigator.geolocation) {
+    if (lastFix) onFix(lastFix);
+    return;
+  }
+  navigator.geolocation.getCurrentPosition(
+    onFix,
+    () => {
+      if (lastFix) onFix(lastFix);
+    },
+    { enableHighAccuracy: true, maximumAge: 0, timeout: 8000 }
+  );
+}
+
+async function pollReconnect() {
+  if (!tracking || !session) return;
+  try {
+    const res = await fetch("/api/poll", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id: session.id, token: session.token }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) return;
+    if (data.reconnectRequested) requestFreshFix();
+  } catch {
+    if (lastFix) {
+      try {
+        await onFix(lastFix);
+      } catch {
+        /* still offline */
+      }
+    }
+  }
+}
+
+setInterval(pollReconnect, 4000);
+
 async function onFix(pos) {
   lastFix = pos;
   const { latitude: lat, longitude: lon, heading, speed, accuracy } = pos.coords;

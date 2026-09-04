@@ -28,3 +28,6 @@ alter table rally_cars
 
 alter table rally_cars
   add column if not exists flag_ack jsonb;
+
+alter table rally_cars
+  add column if not exists reconnect_requested bigint;

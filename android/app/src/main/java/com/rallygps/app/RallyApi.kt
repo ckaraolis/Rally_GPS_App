@@ -139,6 +139,28 @@ class RallyApi(baseUrl: String) {
         }
     }
 
+    fun poll(id: String, token: String): Boolean {
+        val payload = JSONObject()
+            .put("id", id)
+            .put("token", token)
+            .toString()
+            .toRequestBody(jsonType)
+
+        val request = Request.Builder()
+            .url("$root/api/poll")
+            .post(payload)
+            .build()
+
+        client.newCall(request).execute().use { response ->
+            val text = response.body?.string().orEmpty()
+            val json = runCatching { JSONObject(text) }.getOrElse { JSONObject() }
+            if (!response.isSuccessful) {
+                throw IllegalStateException(json.optString("error", "Poll failed (${response.code})"))
+            }
+            return json.optBoolean("reconnectRequested", false)
+        }
+    }
+
     fun stop(id: String, token: String) {
         val payload = JSONObject()
             .put("id", id)
