@@ -297,7 +297,7 @@ function requestFreshFix() {
 
 async function pollReconnect() {
   if (!tracking || !session) return;
-  const stale = !lastPingOkAt || Date.now() - lastPingOkAt > 15_000;
+  let nudged = false;
   try {
     const res = await fetch("/api/poll", {
       method: "POST",
@@ -306,13 +306,10 @@ async function pollReconnect() {
     });
     const data = await res.json().catch(() => ({}));
     if (!res.ok) {
-      if (stale && lastFix) await onFix(lastFix);
+      if (lastFix) await onFix(lastFix);
       return;
     }
-    if (data.reconnectRequested || stale) {
-      if (lastFix) await onFix(lastFix);
-      requestFreshFix();
-    }
+    nudged = Boolean(data.reconnectRequested);
   } catch {
     if (lastFix) {
       try {
@@ -321,7 +318,11 @@ async function pollReconnect() {
         /* still offline */
       }
     }
+    return;
   }
+  if (nudged) requestFreshFix();
+  if (lastFix) await onFix(lastFix);
+  else requestFreshFix();
 }
 
 setInterval(pollReconnect, 4000);

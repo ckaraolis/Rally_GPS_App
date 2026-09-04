@@ -16,6 +16,10 @@ const store = getStore();
 app.set("trust proxy", 1);
 app.disable("x-powered-by");
 app.use(express.json({ limit: "15mb" }));
+app.use("/js", (_req, res, next) => {
+  res.set("Cache-Control", "no-store");
+  next();
+});
 app.use(express.static(path.join(__dirname, "public")));
 
 function publicBase(req) {
