@@ -207,10 +207,12 @@ class TrackingService : Service() {
             if (heading != null) putExtra(TrackingActions.EXTRA_HEADING, heading)
             if (accuracy != null) putExtra(TrackingActions.EXTRA_ACCURACY, accuracy)
             if (error != null) putExtra(TrackingActions.EXTRA_ERROR, error)
-            if (sectionType != null) putExtra(TrackingActions.EXTRA_SECTION_TYPE, sectionType)
-            if (sectionName != null) putExtra(TrackingActions.EXTRA_SECTION_NAME, sectionName)
-            if (sectionLabel != null) putExtra(TrackingActions.EXTRA_SECTION_LABEL, sectionLabel)
-            if (sectionId != null) putExtra(TrackingActions.EXTRA_SECTION_ID, sectionId)
+            if (sectionType != null || sent) {
+                putExtra(TrackingActions.EXTRA_SECTION_TYPE, sectionType ?: "")
+                putExtra(TrackingActions.EXTRA_SECTION_NAME, sectionName ?: "")
+                putExtra(TrackingActions.EXTRA_SECTION_LABEL, sectionLabel ?: "")
+                putExtra(TrackingActions.EXTRA_SECTION_ID, sectionId ?: "")
+            }
             if (flagStatus != null) putExtra(TrackingActions.EXTRA_FLAG_STATUS, flagStatus)
             if (flagTs != null) putExtra(TrackingActions.EXTRA_FLAG_TS, flagTs)
             if (flagAcked != null) putExtra(TrackingActions.EXTRA_FLAG_ACKED, flagAcked)

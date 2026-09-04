@@ -23,6 +23,8 @@ let lastFix = null;
 let inStage = false;
 let stageName = null;
 let stageId = null;
+let sectionType = null;
+let sectionLabel = null;
 let stageFlagStatus = "green";
 let stageFlagTs = 0;
 let flagAcked = true;
@@ -118,6 +120,27 @@ function showTrack() {
   hideRedFlagAlert();
   document.getElementById("plateNumber").textContent = `#${session.carNumber}`;
   document.getElementById("plateName").textContent = session.driverName;
+  updateRoadSectionUi();
+}
+
+function updateRoadSectionUi() {
+  const box = document.getElementById("roadSectionBox");
+  const read = document.getElementById("roadSectionRead");
+  if (!box || !read) return;
+  if (!tracking) {
+    read.textContent = "Start tracking";
+    box.classList.remove("on-road", "off-route");
+    return;
+  }
+  if (sectionType === "road") {
+    read.textContent = sectionLabel || "Road section";
+    box.classList.add("on-road");
+    box.classList.remove("off-route");
+    return;
+  }
+  read.textContent = "Off route";
+  box.classList.add("off-route");
+  box.classList.remove("on-road");
 }
 
 function setLamp(mode, title, hint) {
@@ -159,6 +182,7 @@ function renderMode() {
   } else {
     stagePanel.classList.add("hidden");
     if (session) trackPanel.classList.remove("hidden");
+    updateRoadSectionUi();
   }
 }
 
@@ -216,6 +240,7 @@ async function startTracking() {
   toggleBtn.textContent = "Stop tracking";
   toggleBtn.className = "btn btn-stop";
   setLamp("lamp-live", "TRACKING", "Keep this screen open while you are on the stage");
+  updateRoadSectionUi();
   await requestWakeLock();
 
   watchId = navigator.geolocation.watchPosition(onFix, onGeoError, {
@@ -228,6 +253,8 @@ async function startTracking() {
 async function stopTracking() {
   tracking = false;
   inStage = false;
+  sectionType = null;
+  sectionLabel = null;
   hideCrewAlert();
   hideRedFlagAlert();
   if (watchId != null) {
@@ -290,8 +317,10 @@ async function onFix(pos) {
       return;
     }
     const wasInStage = inStage;
-    inStage = Boolean(data.section && data.section.type === "stage");
-    stageName = data.section?.label || data.section?.name || null;
+    sectionType = data.section?.type || null;
+    sectionLabel = data.section?.label || data.section?.name || null;
+    inStage = sectionType === "stage";
+    stageName = sectionLabel;
     stageId = data.section?.id || null;
     applyFlagFromServer(data);
     if (!wasInStage && inStage) {

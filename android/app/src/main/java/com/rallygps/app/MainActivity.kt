@@ -29,6 +29,8 @@ class MainActivity : AppCompatActivity() {
     private var tracking = false
     private var inStage = false
     private var stageName: String? = null
+    private var sectionType: String? = null
+    private var sectionLabel: String? = null
     private var stoppedSinceMs: Long? = null
     private var acknowledgedStop = false
     private var crewAlertVisible = false
@@ -73,12 +75,15 @@ class MainActivity : AppCompatActivity() {
                 binding.errorRead.visibility = View.GONE
             }
 
-            val sectionType = intent.getStringExtra(TrackingActions.EXTRA_SECTION_TYPE)
-            val sectionLabel = intent.getStringExtra(TrackingActions.EXTRA_SECTION_LABEL)
-            val sectionName = intent.getStringExtra(TrackingActions.EXTRA_SECTION_NAME)
+            if (intent.hasExtra(TrackingActions.EXTRA_SECTION_TYPE)) {
+                sectionType = intent.getStringExtra(TrackingActions.EXTRA_SECTION_TYPE)?.ifBlank { null }
+                val incomingLabel = intent.getStringExtra(TrackingActions.EXTRA_SECTION_LABEL)?.ifBlank { null }
+                val sectionName = intent.getStringExtra(TrackingActions.EXTRA_SECTION_NAME)?.ifBlank { null }
+                sectionLabel = incomingLabel ?: sectionName
+            }
             val wasInStage = inStage
             inStage = tracking && sectionType == "stage"
-            stageName = sectionLabel ?: sectionName
+            stageName = sectionLabel
             if (!wasInStage && inStage) {
                 stoppedSinceMs = null
                 acknowledgedStop = false
@@ -274,6 +279,21 @@ class MainActivity : AppCompatActivity() {
         binding.redFlagTitle.alpha = 1f
     }
 
+    private fun updateRoadSectionUi() {
+        if (!tracking) {
+            binding.roadSectionRead.text = "Start tracking"
+            binding.roadSectionBox.setBackgroundColor(Color.parseColor("#0d1628"))
+            return
+        }
+        if (sectionType == "road") {
+            binding.roadSectionRead.text = sectionLabel ?: "Road section"
+            binding.roadSectionBox.setBackgroundColor(Color.parseColor("#10244a"))
+        } else {
+            binding.roadSectionRead.text = "Off route"
+            binding.roadSectionBox.setBackgroundColor(Color.parseColor("#1a1710"))
+        }
+    }
+
     private fun applyStageFlagUi() {
         val red = stageFlagStatus == "red"
         binding.stageFlag.text = if (red) "RED FLAG" else "GREEN FLAG"
@@ -402,6 +422,8 @@ class MainActivity : AppCompatActivity() {
         startService(intent)
         tracking = false
         inStage = false
+        sectionType = null
+        sectionLabel = null
         hideCrewAlert()
         hideRedFlagAlert()
         renderMode()
@@ -421,6 +443,7 @@ class MainActivity : AppCompatActivity() {
         binding.setupPanel.visibility = View.GONE
         binding.plateNumber.text = "#${current.carNumber}"
         binding.plateName.text = current.driverName
+        updateRoadSectionUi()
         renderMode()
     }
 
@@ -444,6 +467,7 @@ class MainActivity : AppCompatActivity() {
         } else {
             binding.stagePanel.visibility = View.GONE
             binding.trackPanel.visibility = View.VISIBLE
+            updateRoadSectionUi()
             if (tracking) {
                 binding.statusText.setText(R.string.status_tracking)
                 binding.statusHint.setText(R.string.status_hint_tracking)
