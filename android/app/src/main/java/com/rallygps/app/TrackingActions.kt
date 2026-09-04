@@ -14,4 +14,7 @@ object TrackingActions {
     const val EXTRA_SECTION_NAME = "sectionName"
     const val EXTRA_SECTION_LABEL = "sectionLabel"
     const val EXTRA_SECTION_ID = "sectionId"
+    const val EXTRA_FLAG_STATUS = "flagStatus"
+    const val EXTRA_FLAG_TS = "flagTs"
+    const val EXTRA_FLAG_ACKED = "flagAcked"
 }

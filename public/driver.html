@@ -5,6 +5,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <meta name="theme-color" content="#10110f" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <title>Driver · Rally GPS</title>
   <link rel="manifest" href="/manifest.json" />
   <link rel="icon" href="/icons/icon.svg" type="image/svg+xml" />
@@ -92,6 +94,12 @@
       <p>If you had an off or accident, confirm both crew are OK</p>
       <button id="alertOkBtn" type="button" class="btn btn-start alert-btn">GREEN OK<br/>Both crew OK</button>
       <button id="alertSosBtn" type="button" class="btn btn-stop alert-btn">RED SOS<br/>Need help</button>
+    </section>
+
+    <section id="redFlagAlert" class="red-flag-alert hidden">
+      <h2>RED FLAG</h2>
+      <p>This stage is stopped. Confirm you have seen the red flag.</p>
+      <button id="redFlagOkBtn" type="button" class="btn btn-amber alert-btn">OK</button>
     </section>
   </main>
   <script src="/js/driver.js"></script>

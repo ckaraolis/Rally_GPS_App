@@ -6,6 +6,8 @@ L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/
 
 const markers = new Map();
 const routeLayers = new Map();
+const trailLayers = new Map();
+const visibleTrails = new Set();
 let fittedOnce = false;
 let fittedRouteOnce = false;
 let latestCars = [];
@@ -81,6 +83,7 @@ async function refresh() {
   latestCars = data.cars || [];
   renderList(latestCars);
   renderMap(latestCars);
+  await refreshVisibleTrails();
 }
 
 async function refreshSections() {
@@ -118,20 +121,27 @@ function renderSections(sections) {
   sectionList.innerHTML = sections
     .map((section) => {
       const kind = section.type === "stage" ? "STAGE" : "ROAD";
-      return `<li data-section="${section.id}">
-        <span class="dot" style="background:${section.type === "stage" ? "#ff3b30" : "#3d7dff"}"></span>
+      const flag = section.flagStatus === "red" ? "red" : "green";
+      const flagButtons =
+        section.type === "stage"
+          ? `<div class="car-actions">
+            <button type="button" class="mini-toggle${flag === "green" ? " active" : ""}" data-flag="green" data-id="${section.id}">Green flag</button>
+            <button type="button" class="mini-toggle flag-red${flag === "red" ? " active" : ""}" data-flag="red" data-id="${section.id}">Red flag</button>
+            <button type="button" class="mini-toggle" data-type="road" data-id="${section.id}">Make road</button>
+          </div>`
+          : `<button type="button" class="mini-toggle" data-type="stage" data-id="${section.id}">Make stage</button>`;
+      return `<li class="car-row" data-section="${section.id}">
+        <span class="dot" style="background:${section.type === "stage" ? (flag === "red" ? "#ff1a1a" : "#ff3b30") : "#3d7dff"}"></span>
         <div>
           <strong>${escapeHtml(section.name)}</strong>
-          <small>${kind} · ${escapeHtml(section.label)}</small>
+          <small>${kind} · ${escapeHtml(section.label)}${section.type === "stage" ? ` · ${flag === "red" ? "RED FLAG" : "GREEN FLAG"}` : ""}</small>
+          ${flagButtons}
         </div>
-        <button type="button" class="mini-toggle" data-id="${section.id}" data-type="${
-        section.type === "stage" ? "road" : "stage"
-      }">Make ${section.type === "stage" ? "road" : "stage"}</button>
       </li>`;
     })
     .join("");
 
-  for (const btn of sectionList.querySelectorAll(".mini-toggle")) {
+  for (const btn of sectionList.querySelectorAll("button[data-type]")) {
     btn.addEventListener("click", async (event) => {
       event.stopPropagation();
       const id = btn.getAttribute("data-id");
@@ -140,6 +150,20 @@ function renderSections(sections) {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ type }),
+      });
+      await refreshSections();
+    });
+  }
+
+  for (const btn of sectionList.querySelectorAll("button[data-flag]")) {
+    btn.addEventListener("click", async (event) => {
+      event.stopPropagation();
+      const id = btn.getAttribute("data-id");
+      const flagStatus = btn.getAttribute("data-flag");
+      await fetch(`/api/sections/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ flagStatus }),
       });
       await refreshSections();
     });
@@ -205,34 +229,96 @@ function renderList(cars) {
       const crew = car.crewStatus?.status;
       const crewLabel =
         crew === "sos" ? "RED SOS" : crew === "ok" ? "GREEN OK" : "";
-      const canDownload = (car.trailCount || 0) > 1;
-      return `<li data-id="${car.id}">
+      const flagLabel = car.flagStatus === "red" ? " · RED FLAG" : "";
+      const hasTrail = (car.trailCount || 0) > 1;
+      const showing = visibleTrails.has(car.id);
+      return `<li class="car-row" data-id="${car.id}">
         <span class="dot" style="background:${car.color}"></span>
         <div>
           <strong>#${escapeHtml(car.carNumber)} ${escapeHtml(car.driverName)}</strong>
-          <small>${state} · ${speed}${crewLabel ? ` · ${crewLabel}` : ""}</small>
+          <small>${state} · ${speed}${crewLabel ? ` · ${crewLabel}` : ""}${flagLabel}</small>
           <small class="section-line">${escapeHtml(section)}</small>
+          <div class="car-actions">
+            <button type="button" class="mini-toggle${showing ? " active" : ""}" data-route="${car.id}" ${
+              hasTrail ? "" : "disabled"
+            }>${showing ? "Hide route" : "Show route"}</button>
+            ${
+              hasTrail
+                ? `<a class="mini-toggle" href="/api/cars/${encodeURIComponent(
+                    car.id
+                  )}/track.gpx" download>GPX</a>`
+                : ""
+            }
+          </div>
         </div>
-        ${
-          canDownload
-            ? `<a class="mini-toggle" href="/api/cars/${encodeURIComponent(
-                car.id
-              )}/track.gpx" download>GPX</a>`
-            : `<small>${car.section?.type === "stage" ? "SS" : ""}</small>`
-        }
       </li>`;
     })
     .join("");
 
   for (const row of list.querySelectorAll("li[data-id]")) {
     row.addEventListener("click", (event) => {
-      if (event.target.closest("a")) return;
+      if (event.target.closest("a, button")) return;
       const car = cars.find((c) => c.id === row.dataset.id);
       if (!car?.last) return;
       map.flyTo([car.last.lat, car.last.lon], 14);
       const marker = markers.get(car.id);
       if (marker) marker.openPopup();
     });
+  }
+
+  for (const btn of list.querySelectorAll("button[data-route]")) {
+    btn.addEventListener("click", async (event) => {
+      event.stopPropagation();
+      const id = btn.getAttribute("data-route");
+      if (visibleTrails.has(id)) hideCarTrail(id);
+      else await showCarTrail(id, { fit: true });
+      renderList(latestCars);
+    });
+  }
+}
+
+function hideCarTrail(id) {
+  visibleTrails.delete(id);
+  const layer = trailLayers.get(id);
+  if (layer) {
+    map.removeLayer(layer);
+    trailLayers.delete(id);
+  }
+}
+
+function drawCarTrail(car, { fit = false } = {}) {
+  const trail = Array.isArray(car.trail) ? car.trail : [];
+  if (trail.length < 2) return;
+  const latlngs = trail.map((p) => [p.lat, p.lon]);
+  const color = car.color || "#ffc14a";
+  if (trailLayers.has(car.id)) {
+    trailLayers.get(car.id).setLatLngs(latlngs).setStyle({ color });
+  } else {
+    trailLayers.set(
+      car.id,
+      L.polyline(latlngs, { color, weight: 4, opacity: 0.85 }).addTo(map)
+    );
+  }
+  if (fit) {
+    map.fitBounds(trailLayers.get(car.id).getBounds(), { padding: [40, 40], maxZoom: 15 });
+  }
+}
+
+async function showCarTrail(id, { fit = false } = {}) {
+  const res = await fetch(`/api/cars/${encodeURIComponent(id)}`);
+  const car = await res.json();
+  if (!res.ok) throw new Error(car.error || "Could not load car route");
+  visibleTrails.add(id);
+  drawCarTrail(car, { fit });
+}
+
+async function refreshVisibleTrails() {
+  for (const id of [...visibleTrails]) {
+    try {
+      await showCarTrail(id);
+    } catch {
+      /* keep last drawn path */
+    }
   }
 }
 
@@ -288,3 +374,12 @@ function escapeHtml(value) {
 refresh();
 refreshSections();
 setInterval(refresh, 3000);
+setInterval(refreshSections, 4000);
+
+function resizeMap() {
+  map.invalidateSize();
+}
+window.addEventListener("resize", resizeMap);
+window.addEventListener("orientationchange", () => {
+  setTimeout(resizeMap, 250);
+});

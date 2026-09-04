@@ -81,11 +81,17 @@ class RallyApi(baseUrl: String) {
                 throw IllegalStateException(json.optString("error", "Ping failed (${response.code})"))
             }
             val section = json.optJSONObject("section")
+            val flag = json.optString("flagStatus").ifBlank {
+                section?.optString("flagStatus").orEmpty()
+            }
             return PingResult(
                 sectionType = section?.optString("type")?.ifBlank { null },
                 sectionName = section?.optString("name")?.ifBlank { null },
                 sectionLabel = section?.optString("label")?.ifBlank { null },
-                sectionId = section?.optString("id")?.ifBlank { null }
+                sectionId = section?.optString("id")?.ifBlank { null },
+                flagStatus = if (flag == "red") "red" else "green",
+                flagTs = json.optLong("flagTs", section?.optLong("flagTs", 0L) ?: 0L),
+                flagAcked = json.optBoolean("flagAcked", flag != "red")
             )
         }
     }
@@ -108,6 +114,27 @@ class RallyApi(baseUrl: String) {
                 val text = response.body?.string().orEmpty()
                 val json = runCatching { JSONObject(text) }.getOrElse { JSONObject() }
                 throw IllegalStateException(json.optString("error", "Crew status failed (${response.code})"))
+            }
+        }
+    }
+
+    fun ackFlag(id: String, token: String) {
+        val payload = JSONObject()
+            .put("id", id)
+            .put("token", token)
+            .toString()
+            .toRequestBody(jsonType)
+
+        val request = Request.Builder()
+            .url("$root/api/flag-ack")
+            .post(payload)
+            .build()
+
+        client.newCall(request).execute().use { response ->
+            if (!response.isSuccessful) {
+                val text = response.body?.string().orEmpty()
+                val json = runCatching { JSONObject(text) }.getOrElse { JSONObject() }
+                throw IllegalStateException(json.optString("error", "Flag ack failed (${response.code})"))
             }
         }
     }

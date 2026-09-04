@@ -15,13 +15,16 @@
 }
 
 * { box-sizing: border-box; }
-html, body { margin: 0; min-height: 100%; }
+html, body { margin: 0; min-height: 100%; min-height: 100dvh; }
 body {
   background:
     radial-gradient(1200px 500px at 10% -10%, #2a220f 0%, transparent 55%),
     var(--bg);
   color: var(--ink);
   font-family: var(--font);
+}
+.driver-body {
+  min-height: 100dvh;
 }
 a { color: var(--amber); text-decoration: none; }
 code { font-family: var(--mono); font-size: 0.9em; }
@@ -150,8 +153,17 @@ code { font-family: var(--mono); font-size: 0.9em; }
   font-size: 0.9rem;
 }
 
-.driver-shell, .control-side { padding: 24px; }
-.driver-shell { max-width: 520px; margin: 0 auto; padding-bottom: 48px; }
+.driver-shell, .control-side {
+  padding: 24px;
+  padding-left: max(24px, env(safe-area-inset-left));
+  padding-right: max(24px, env(safe-area-inset-right));
+  padding-bottom: max(24px, env(safe-area-inset-bottom));
+}
+.driver-shell {
+  max-width: 520px;
+  margin: 0 auto;
+  padding-bottom: max(48px, env(safe-area-inset-bottom));
+}
 
 .secure-note {
   margin: 10px 0 0;
@@ -272,6 +284,10 @@ input {
   border-bottom: 1px solid var(--line);
   cursor: pointer;
 }
+.car-list li.car-row {
+  grid-template-columns: 10px 1fr;
+  align-items: start;
+}
 .car-list .dot {
   width: 10px;
   height: 10px;
@@ -312,6 +328,16 @@ input {
   cursor: pointer;
   white-space: nowrap;
   text-decoration: none;
+}
+.mini-toggle.active {
+  border-color: var(--amber);
+  color: var(--amber);
+}
+.car-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
 }
 .car-popup {
   font-family: "Barlow Condensed", sans-serif;
@@ -354,6 +380,12 @@ input {
   font-size: 2rem;
   letter-spacing: 0.08em;
 }
+.stage-flag-box.red {
+  background: #2a0f0f;
+}
+.stage-flag-box.red strong {
+  color: var(--stop);
+}
 .stage-actions {
   display: grid;
   gap: 10px;
@@ -370,6 +402,35 @@ input {
   letter-spacing: 0.1em;
 }
 .alert-btn { min-height: 110px; line-height: 1.2; }
+.red-flag-alert {
+  display: grid;
+  gap: 16px;
+  place-content: center;
+  min-height: 70vh;
+  text-align: center;
+  padding: 24px 16px;
+  animation: redFlash 0.65s infinite alternate;
+}
+.red-flag-alert h2 {
+  margin: 0;
+  color: #fff;
+  font-size: clamp(3.4rem, 16vw, 6rem);
+  letter-spacing: 0.08em;
+  line-height: 0.95;
+}
+.red-flag-alert p {
+  margin: 0;
+  color: #fff;
+  font-size: 1.3rem;
+}
+@keyframes redFlash {
+  from { background: #7a0000; }
+  to { background: #ff1a1a; }
+}
+.mini-toggle.flag-red.active {
+  border-color: var(--stop);
+  color: var(--stop);
+}
 
 
 
@@ -390,4 +451,182 @@ input {
 @media (max-width: 860px) {
   .control-body { grid-template-columns: 1fr; }
   .control-map { min-height: 55vh; }
+}
+
+/* Phone / installed PWA landscape: keep everything on one screen */
+@media (orientation: landscape) and (max-height: 560px) {
+  .tape { height: 4px; }
+
+  .shell {
+    max-width: none;
+    padding: 16px 20px 24px;
+  }
+  .brand h1,
+  .driver-shell h1 {
+    font-size: clamp(2rem, 8vh, 3rem);
+  }
+  .lede { font-size: 1.05rem; max-width: none; }
+  .gates { grid-template-columns: 1fr 1fr; }
+
+  .driver-body {
+    height: 100dvh;
+    overflow: hidden;
+  }
+  .driver-shell {
+    max-width: none;
+    height: calc(100dvh - 4px);
+    overflow: auto;
+    padding: 8px max(16px, env(safe-area-inset-right)) max(10px, env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left));
+  }
+  .driver-top { display: none; }
+
+  .panel {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    max-width: 780px;
+    margin: 0 auto;
+    min-height: calc(100dvh - 36px);
+    gap: 8px;
+  }
+  .panel .join-form {
+    display: grid;
+    grid-template-columns: 140px 1fr auto;
+    align-items: end;
+    gap: 10px;
+  }
+  .panel .join-form .btn {
+    width: auto;
+    min-width: 150px;
+    min-height: 52px;
+    padding: 0 20px;
+  }
+
+  .track-panel {
+    display: grid;
+    grid-template-columns: minmax(180px, 1fr) 1.2fr;
+    grid-template-rows: auto 1fr auto auto;
+    grid-template-areas:
+      "plate tele"
+      "lamp tele"
+      "coord btn"
+      "err err";
+    gap: 8px 12px;
+    align-items: stretch;
+    height: calc(100dvh - 36px);
+  }
+  .track-panel .plate {
+    grid-area: plate;
+    font-size: 1.35rem;
+    padding: 8px 12px;
+  }
+  .track-panel .lamp {
+    grid-area: lamp;
+    padding: 10px 12px;
+  }
+  .track-panel .lamp span { font-size: 1.6rem; letter-spacing: 0.1em; }
+  .track-panel .telemetry {
+    grid-area: tele;
+    grid-template-columns: 1fr 1fr;
+  }
+  .track-panel .telemetry dd { font-size: 1.25rem; }
+  .track-panel .telemetry div { padding: 8px 10px; }
+  .track-panel .coords { grid-area: coord; margin: 0; align-self: center; }
+  .track-panel .error { grid-area: err; margin: 0; }
+  .track-panel .btn {
+    grid-area: btn;
+    min-height: 52px;
+    font-size: 1.2rem;
+  }
+
+  .stage-panel {
+    grid-template-columns: 1fr 1fr;
+    grid-template-rows: auto 1fr auto;
+    grid-template-areas:
+      "name name"
+      "grid grid"
+      "speed stop";
+    gap: 8px;
+    height: calc(100dvh - 48px);
+  }
+  .stage-name {
+    grid-area: name;
+    padding: 8px 10px;
+    font-size: clamp(1.15rem, 4.4vh, 1.6rem);
+  }
+  .stage-grid {
+    grid-area: grid;
+    min-height: 0;
+    height: auto;
+    flex: 1;
+  }
+  .stage-flag-box strong { font-size: clamp(1.3rem, 5vh, 2rem); }
+  .stage-panel .coords {
+    grid-area: speed;
+    margin: 0;
+    align-self: center;
+  }
+  .stage-panel > .btn {
+    grid-area: stop;
+    min-height: 48px;
+    font-size: 1.1rem;
+  }
+  .stage-half { min-height: 48px; font-size: 1.25rem; }
+
+  .crew-alert,
+  .red-flag-alert {
+    position: fixed;
+    inset: 0;
+    z-index: 30;
+    margin: 0;
+    min-height: 100dvh;
+    padding: 16px max(20px, env(safe-area-inset-right)) 16px max(20px, env(safe-area-inset-left));
+  }
+  .crew-alert {
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+    align-content: center;
+  }
+  .crew-alert h2,
+  .crew-alert p { grid-column: 1 / -1; }
+  .crew-alert h2 { font-size: 1.6rem; }
+  .alert-btn { min-height: 88px; font-size: 1.2rem; }
+
+  .red-flag-alert {
+    grid-template-columns: 1.3fr minmax(160px, 0.8fr);
+    grid-template-areas:
+      "title btn"
+      "copy btn";
+    align-content: center;
+    align-items: center;
+    gap: 10px 18px;
+  }
+  .red-flag-alert h2 {
+    grid-area: title;
+    font-size: clamp(2.4rem, 14vh, 4.4rem);
+  }
+  .red-flag-alert p { grid-area: copy; font-size: 1.1rem; }
+  .red-flag-alert .btn {
+    grid-area: btn;
+    min-height: 96px;
+    height: 100%;
+  }
+
+  .driver-body:has(#redFlagAlert:not(.hidden)) .tape,
+  .driver-body:has(#crewAlert:not(.hidden)) .tape {
+    display: none;
+  }
+
+  .control-body {
+    grid-template-columns: minmax(240px, 38vw) 1fr;
+    height: 100dvh;
+  }
+  .control-side {
+    max-height: 100dvh;
+    padding: 12px 14px;
+  }
+  .control-side h1 { font-size: 2rem; }
+  .control-map { min-height: 100dvh; }
+  .earth-box { margin: 12px 0; padding: 10px; }
+  .btn { min-height: 48px; }
 }

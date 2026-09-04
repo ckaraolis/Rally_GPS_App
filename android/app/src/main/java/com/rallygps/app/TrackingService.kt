@@ -69,7 +69,10 @@ class TrackingService : Service() {
                         sectionType = ping.sectionType,
                         sectionName = ping.sectionName,
                         sectionLabel = ping.sectionLabel,
-                        sectionId = ping.sectionId
+                        sectionId = ping.sectionId,
+                        flagStatus = ping.flagStatus,
+                        flagTs = ping.flagTs,
+                        flagAcked = ping.flagAcked
                     )
                 } catch (error: Exception) {
                     broadcast(
@@ -102,6 +105,16 @@ class TrackingService : Service() {
                 if (current != null && client != null) {
                     executor.execute {
                         runCatching { client.crewStatus(current.id, current.token, status) }
+                    }
+                }
+                return START_STICKY
+            }
+            ACTION_FLAG_ACK -> {
+                val current = session ?: SessionStore.load(this)
+                val client = api ?: current?.let { RallyApi(it.serverUrl) }
+                if (current != null && client != null) {
+                    executor.execute {
+                        runCatching { client.ackFlag(current.id, current.token) }
                     }
                 }
                 return START_STICKY
@@ -179,7 +192,10 @@ class TrackingService : Service() {
         sectionType: String? = null,
         sectionName: String? = null,
         sectionLabel: String? = null,
-        sectionId: String? = null
+        sectionId: String? = null,
+        flagStatus: String? = null,
+        flagTs: Long? = null,
+        flagAcked: Boolean? = null
     ) {
         val intent = Intent(TrackingActions.STATUS).apply {
             setPackage(packageName)
@@ -195,6 +211,9 @@ class TrackingService : Service() {
             if (sectionName != null) putExtra(TrackingActions.EXTRA_SECTION_NAME, sectionName)
             if (sectionLabel != null) putExtra(TrackingActions.EXTRA_SECTION_LABEL, sectionLabel)
             if (sectionId != null) putExtra(TrackingActions.EXTRA_SECTION_ID, sectionId)
+            if (flagStatus != null) putExtra(TrackingActions.EXTRA_FLAG_STATUS, flagStatus)
+            if (flagTs != null) putExtra(TrackingActions.EXTRA_FLAG_TS, flagTs)
+            if (flagAcked != null) putExtra(TrackingActions.EXTRA_FLAG_ACKED, flagAcked)
         }
         sendBroadcast(intent)
     }
@@ -237,6 +256,7 @@ class TrackingService : Service() {
     companion object {
         const val ACTION_STOP = "com.rallygps.app.STOP"
         const val ACTION_CREW_STATUS = "com.rallygps.app.CREW_STATUS"
+        const val ACTION_FLAG_ACK = "com.rallygps.app.FLAG_ACK"
         const val EXTRA_CREW_STATUS = "crewStatus"
         private const val CHANNEL_ID = "rally_tracking"
         private const val NOTIFICATION_ID = 42

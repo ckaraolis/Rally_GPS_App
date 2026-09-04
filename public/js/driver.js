@@ -2,6 +2,7 @@ const setupPanel = document.getElementById("setupPanel");
 const trackPanel = document.getElementById("trackPanel");
 const stagePanel = document.getElementById("stagePanel");
 const crewAlert = document.getElementById("crewAlert");
+const redFlagAlert = document.getElementById("redFlagAlert");
 const joinForm = document.getElementById("joinForm");
 const toggleBtn = document.getElementById("toggleBtn");
 const statusLamp = document.getElementById("statusLamp");
@@ -21,6 +22,10 @@ let tracking = false;
 let lastFix = null;
 let inStage = false;
 let stageName = null;
+let stageId = null;
+let stageFlagStatus = "green";
+let stageFlagTs = 0;
+let flagAcked = true;
 let stoppedSinceMs = null;
 let acknowledgedStop = false;
 
@@ -87,12 +92,30 @@ document.getElementById("okBtn").addEventListener("click", () => sendCrew("ok"))
 document.getElementById("sosBtn").addEventListener("click", () => sendCrew("sos"));
 document.getElementById("alertOkBtn").addEventListener("click", () => sendCrew("ok"));
 document.getElementById("alertSosBtn").addEventListener("click", () => sendCrew("sos"));
+document.getElementById("redFlagOkBtn").addEventListener("click", ackRedFlag);
+
+async function ackRedFlag() {
+  flagAcked = true;
+  hideRedFlagAlert();
+  renderMode();
+  if (!session) return;
+  try {
+    await fetch("/api/flag-ack", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id: session.id, token: session.token }),
+    });
+  } catch {
+    /* keep local ack so the crew can keep driving */
+  }
+}
 
 function showTrack() {
   setupPanel.classList.add("hidden");
   trackPanel.classList.remove("hidden");
   stagePanel.classList.add("hidden");
   hideCrewAlert();
+  hideRedFlagAlert();
   document.getElementById("plateNumber").textContent = `#${session.carNumber}`;
   document.getElementById("plateName").textContent = session.driverName;
 }
@@ -113,17 +136,46 @@ function showError(message) {
   errorRead.classList.remove("hidden");
 }
 
+function applyStageFlagUi() {
+  const flagBox = document.querySelector(".stage-flag-box");
+  const flagText = document.getElementById("stageFlag");
+  const red = stageFlagStatus === "red";
+  flagText.textContent = red ? "RED FLAG" : "GREEN FLAG";
+  flagBox.classList.toggle("red", red);
+}
+
 function renderMode() {
+  if (shouldShowRedFlag()) {
+    showRedFlagAlert();
+    return;
+  }
+  hideRedFlagAlert();
   if (!crewAlert.classList.contains("hidden")) return;
   if (tracking && inStage) {
     trackPanel.classList.add("hidden");
     stagePanel.classList.remove("hidden");
     document.getElementById("stageName").textContent = stageName || "SPECIAL STAGE";
-    document.getElementById("stageFlag").textContent = "GREEN FLAG";
+    applyStageFlagUi();
   } else {
     stagePanel.classList.add("hidden");
     if (session) trackPanel.classList.remove("hidden");
   }
+}
+
+function shouldShowRedFlag() {
+  return tracking && inStage && stageFlagStatus === "red" && !flagAcked;
+}
+
+function showRedFlagAlert() {
+  redFlagAlert.classList.remove("hidden");
+  crewAlert.classList.add("hidden");
+  trackPanel.classList.add("hidden");
+  stagePanel.classList.add("hidden");
+  setupPanel.classList.add("hidden");
+}
+
+function hideRedFlagAlert() {
+  redFlagAlert.classList.add("hidden");
 }
 
 function showCrewAlert() {
@@ -177,6 +229,7 @@ async function stopTracking() {
   tracking = false;
   inStage = false;
   hideCrewAlert();
+  hideRedFlagAlert();
   if (watchId != null) {
     navigator.geolocation.clearWatch(watchId);
     watchId = null;
@@ -239,6 +292,8 @@ async function onFix(pos) {
     const wasInStage = inStage;
     inStage = Boolean(data.section && data.section.type === "stage");
     stageName = data.section?.label || data.section?.name || null;
+    stageId = data.section?.id || null;
+    applyFlagFromServer(data);
     if (!wasInStage && inStage) {
       stoppedSinceMs = null;
       acknowledgedStop = false;
@@ -248,6 +303,9 @@ async function onFix(pos) {
       stoppedSinceMs = null;
       acknowledgedStop = false;
       hideCrewAlert();
+      hideRedFlagAlert();
+      stageFlagStatus = "green";
+      flagAcked = true;
     }
     updateStopWatch(speed);
     renderMode();
@@ -280,6 +338,44 @@ function releaseWakeLock() {
     wakeLock = null;
   }
 }
+
+function applyFlagFromServer(data) {
+  const nextFlag = data.flagStatus === "red" || data.section?.flagStatus === "red" ? "red" : "green";
+  const nextTs = Number(data.flagTs || data.section?.flagTs || 0);
+  if (nextFlag === "green") {
+    stageFlagStatus = "green";
+    stageFlagTs = nextTs;
+    flagAcked = true;
+    hideRedFlagAlert();
+    return;
+  }
+  if (nextTs !== stageFlagTs || stageFlagStatus !== "red") {
+    flagAcked = data.flagAcked === true;
+  }
+  stageFlagStatus = "red";
+  stageFlagTs = nextTs;
+}
+
+async function pollStageFlag() {
+  if (!tracking || !inStage || !stageId) return;
+  try {
+    const res = await fetch("/api/sections");
+    const data = await res.json();
+    const section = (data.sections || []).find((s) => s.id === stageId);
+    if (!section) return;
+    applyFlagFromServer({
+      flagStatus: section.flagStatus,
+      flagTs: section.flagTs,
+      flagAcked: false,
+      section,
+    });
+    renderMode();
+  } catch {
+    /* keep last known flag */
+  }
+}
+
+setInterval(pollStageFlag, 2000);
 
 document.addEventListener("visibilitychange", async () => {
   if (document.visibilityState === "visible" && tracking) await requestWakeLock();

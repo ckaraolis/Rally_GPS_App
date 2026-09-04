@@ -10,7 +10,7 @@ const app = express();
 const PORT = Number(process.env.PORT) || 3000;
 const PUBLIC_BASE_URL = (process.env.PUBLIC_BASE_URL || "").replace(/\/$/, "");
 const STALE_MS = 45_000;
-const MAX_TRAIL = 500;
+const MAX_TRAIL = 4000;
 const store = getStore();
 
 app.set("trust proxy", 1);
@@ -43,6 +43,20 @@ function isLive(car) {
   return Boolean(car.tracking && car.last && Date.now() - car.last.ts < STALE_MS);
 }
 
+function sectionFlag(section) {
+  if (!section || section.type !== "stage") return { flagStatus: "green", flagTs: 0 };
+  return {
+    flagStatus: section.flagStatus === "red" ? "red" : "green",
+    flagTs: Number(section.flagTs) || 0,
+  };
+}
+
+function hasAckedFlag(car, section) {
+  const { flagStatus, flagTs } = sectionFlag(section);
+  if (flagStatus !== "red" || !section) return true;
+  return car.flagAck?.stageId === section.id && Number(car.flagAck?.flagTs) === flagTs;
+}
+
 function serializeCar(car, { includeTrail = false } = {}) {
   return {
     id: car.id,
@@ -54,6 +68,8 @@ function serializeCar(car, { includeTrail = false } = {}) {
     last: car.last,
     section: car.section || null,
     crewStatus: car.crewStatus || null,
+    flagStatus: sectionFlag(car.section).flagStatus,
+    flagAcked: hasAckedFlag(car, car.section),
     trailCount: Array.isArray(car.trail) ? car.trail.length : 0,
     ...(includeTrail ? { trail: car.trail || [] } : {}),
   };
@@ -177,7 +193,16 @@ app.post(
     }
 
     await store.saveCar(car);
-    res.json({ ok: true, receivedAt: ts, section: car.section || null, crewStatus: car.crewStatus || null });
+    const { flagStatus, flagTs } = sectionFlag(car.section);
+    res.json({
+      ok: true,
+      receivedAt: ts,
+      section: car.section || null,
+      crewStatus: car.crewStatus || null,
+      flagStatus,
+      flagTs,
+      flagAcked: hasAckedFlag(car, car.section),
+    });
   })
 );
 
@@ -204,6 +229,25 @@ app.post(
 );
 
 app.post(
+  "/api/flag-ack",
+  asyncHandler(async (req, res) => {
+    const car = await store.getCar(req.body.id);
+    if (!car || car.token !== req.body.token) {
+      return res.status(401).json({ error: "Unknown car session." });
+    }
+    const sections = await store.listSections();
+    const live = sections.find((s) => s.id === car.section?.id) || car.section;
+    const { flagStatus, flagTs } = sectionFlag(live);
+    if (!live || live.type !== "stage" || flagStatus !== "red") {
+      return res.status(400).json({ error: "This car is not on a red-flagged stage." });
+    }
+    car.flagAck = { stageId: live.id, flagTs, ts: Date.now() };
+    await store.saveCar(car);
+    res.json({ ok: true, flagAcked: true, flagStatus, flagTs });
+  })
+);
+
+app.post(
   "/api/stop",
   asyncHandler(async (req, res) => {
     const car = await store.getCar(req.body.id);
@@ -224,6 +268,15 @@ app.get(
       serverTime: Date.now(),
       cars: cars.map((car) => serializeCar(car)),
     });
+  })
+);
+
+app.get(
+  "/api/cars/:id",
+  asyncHandler(async (req, res) => {
+    const car = await store.getCar(req.params.id);
+    if (!car) return res.status(404).json({ error: "Car not found." });
+    res.json(serializeCar(car, { includeTrail: true }));
   })
 );
 
@@ -351,8 +404,21 @@ app.patch(
     if (type === "stage" || type === "road") {
       patch.type = type;
       patch.label = buildLabel(name || (await store.listSections()).find((s) => s.id === req.params.id)?.name || "Section", type);
+      if (type === "road") {
+        patch.flagStatus = "green";
+        patch.flagTs = Date.now();
+      }
     }
     if (typeof req.body.active === "boolean") patch.active = req.body.active;
+    if (req.body.flagStatus === "red" || req.body.flagStatus === "green") {
+      const current =
+        (await store.listSections()).find((s) => s.id === req.params.id) || null;
+      if (req.body.flagStatus === "red" && current && current.type !== "stage") {
+        return res.status(400).json({ error: "Only special stages can be red-flagged." });
+      }
+      patch.flagStatus = req.body.flagStatus;
+      patch.flagTs = Date.now();
+    }
     const updated = await store.updateSection(req.params.id, patch);
     if (!updated) return res.status(404).json({ error: "Section not found." });
     res.json({ section: updated });

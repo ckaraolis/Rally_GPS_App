@@ -6,6 +6,9 @@ import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.content.pm.PackageManager
+import android.animation.ObjectAnimator
+import android.animation.ValueAnimator
+import android.graphics.Color
 import android.os.Build
 import android.os.Bundle
 import android.view.View
@@ -29,6 +32,11 @@ class MainActivity : AppCompatActivity() {
     private var stoppedSinceMs: Long? = null
     private var acknowledgedStop = false
     private var crewAlertVisible = false
+    private var redFlagVisible = false
+    private var stageFlagStatus = "green"
+    private var stageFlagTs = 0L
+    private var flagAcked = true
+    private var redFlagBlink: ObjectAnimator? = null
 
     private val permissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
@@ -80,13 +88,24 @@ class MainActivity : AppCompatActivity() {
                 stoppedSinceMs = null
                 acknowledgedStop = false
                 hideCrewAlert()
+                hideRedFlagAlert()
+                stageFlagStatus = "green"
+                flagAcked = true
+            }
+
+            if (intent.hasExtra(TrackingActions.EXTRA_FLAG_STATUS)) {
+                applyFlagFromServer(
+                    intent.getStringExtra(TrackingActions.EXTRA_FLAG_STATUS) ?: "green",
+                    intent.getLongExtra(TrackingActions.EXTRA_FLAG_TS, 0L),
+                    intent.getBooleanExtra(TrackingActions.EXTRA_FLAG_ACKED, true)
+                )
             }
 
             val speed = if (intent.hasExtra(TrackingActions.EXTRA_SPEED)) {
                 intent.getFloatExtra(TrackingActions.EXTRA_SPEED, 0f)
             } else null
 
-            if (inStage) {
+            if (inStage && !shouldShowRedFlag()) {
                 updateStopWatch(speed)
             }
 
@@ -148,6 +167,12 @@ class MainActivity : AppCompatActivity() {
         binding.sosBtn.setOnClickListener { sendCrew("sos") }
         binding.alertOkBtn.setOnClickListener { sendCrew("ok") }
         binding.alertSosBtn.setOnClickListener { sendCrew("sos") }
+        binding.redFlagOkBtn.setOnClickListener {
+            flagAcked = true
+            hideRedFlagAlert()
+            sendFlagAck()
+            renderMode()
+        }
     }
 
     override fun onStart() {
@@ -182,12 +207,34 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    private fun applyFlagFromServer(status: String, flagTs: Long, acked: Boolean) {
+        val next = if (status == "red") "red" else "green"
+        if (next == "green") {
+            stageFlagStatus = "green"
+            stageFlagTs = flagTs
+            flagAcked = true
+            hideRedFlagAlert()
+            return
+        }
+        if (flagTs != stageFlagTs || stageFlagStatus != "red") {
+            flagAcked = acked
+        }
+        stageFlagStatus = "red"
+        stageFlagTs = flagTs
+    }
+
+    private fun shouldShowRedFlag(): Boolean {
+        return tracking && inStage && stageFlagStatus == "red" && !flagAcked
+    }
+
     private fun showCrewAlert() {
+        if (shouldShowRedFlag()) return
         crewAlertVisible = true
         binding.crewAlert.visibility = View.VISIBLE
         binding.trackPanel.visibility = View.GONE
         binding.stagePanel.visibility = View.GONE
         binding.setupPanel.visibility = View.GONE
+        binding.redFlagAlert.visibility = View.GONE
     }
 
     private fun hideCrewAlert() {
@@ -195,10 +242,59 @@ class MainActivity : AppCompatActivity() {
         binding.crewAlert.visibility = View.GONE
     }
 
+    private fun showRedFlagAlert() {
+        redFlagVisible = true
+        hideCrewAlert()
+        binding.redFlagAlert.visibility = View.VISIBLE
+        binding.trackPanel.visibility = View.GONE
+        binding.stagePanel.visibility = View.GONE
+        binding.setupPanel.visibility = View.GONE
+        startRedFlagBlink()
+    }
+
+    private fun hideRedFlagAlert() {
+        redFlagVisible = false
+        binding.redFlagAlert.visibility = View.GONE
+        stopRedFlagBlink()
+    }
+
+    private fun startRedFlagBlink() {
+        if (redFlagBlink?.isRunning == true) return
+        redFlagBlink = ObjectAnimator.ofFloat(binding.redFlagTitle, View.ALPHA, 1f, 0.15f).apply {
+            duration = 400
+            repeatMode = ValueAnimator.REVERSE
+            repeatCount = ValueAnimator.INFINITE
+            start()
+        }
+    }
+
+    private fun stopRedFlagBlink() {
+        redFlagBlink?.cancel()
+        redFlagBlink = null
+        binding.redFlagTitle.alpha = 1f
+    }
+
+    private fun applyStageFlagUi() {
+        val red = stageFlagStatus == "red"
+        binding.stageFlag.text = if (red) "RED FLAG" else "GREEN FLAG"
+        binding.stageFlag.setTextColor(
+            ContextCompat.getColor(this, if (red) R.color.stop else R.color.go)
+        )
+        binding.stageFlagBox.setBackgroundColor(
+            if (red) Color.parseColor("#2a0f0f") else Color.parseColor("#10200c")
+        )
+    }
+
     private fun sendCrewStatus(status: String) {
         val intent = Intent(this, TrackingService::class.java)
             .setAction(TrackingService.ACTION_CREW_STATUS)
             .putExtra(TrackingService.EXTRA_CREW_STATUS, status)
+        startService(intent)
+    }
+
+    private fun sendFlagAck() {
+        val intent = Intent(this, TrackingService::class.java)
+            .setAction(TrackingService.ACTION_FLAG_ACK)
         startService(intent)
     }
 
@@ -307,6 +403,7 @@ class MainActivity : AppCompatActivity() {
         tracking = false
         inStage = false
         hideCrewAlert()
+        hideRedFlagAlert()
         renderMode()
     }
 
@@ -315,6 +412,7 @@ class MainActivity : AppCompatActivity() {
         binding.trackPanel.visibility = View.GONE
         binding.stagePanel.visibility = View.GONE
         hideCrewAlert()
+        hideRedFlagAlert()
         binding.serverUrl.setText(SessionStore.loadServerUrl(this))
     }
 
@@ -327,6 +425,11 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun renderMode() {
+        if (shouldShowRedFlag()) {
+            showRedFlagAlert()
+            return
+        }
+        hideRedFlagAlert()
         if (crewAlertVisible) return
         if (session == null) {
             showSetupPanel()
@@ -337,7 +440,7 @@ class MainActivity : AppCompatActivity() {
             binding.trackPanel.visibility = View.GONE
             binding.stagePanel.visibility = View.VISIBLE
             binding.stageName.text = stageName ?: "SPECIAL STAGE"
-            binding.stageFlag.text = "GREEN FLAG"
+            applyStageFlagUi()
         } else {
             binding.stagePanel.visibility = View.GONE
             binding.trackPanel.visibility = View.VISIBLE

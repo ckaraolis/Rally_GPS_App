@@ -3,6 +3,7 @@
   "short_name": "Rally GPS",
   "start_url": "/driver.html",
   "display": "standalone",
+  "orientation": "any",
   "background_color": "#10110f",
   "theme_color": "#10110f",
   "icons": [

@@ -25,3 +25,6 @@ alter table rally_cars
   add column if not exists crew_status jsonb;
 
 -- Also run supabase/schema_routes.sql for KMZ route sections.
+
+alter table rally_cars
+  add column if not exists flag_ack jsonb;

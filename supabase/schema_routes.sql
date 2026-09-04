@@ -20,6 +20,15 @@ alter table rally_sections enable row level security;
 alter table rally_cars
   add column if not exists section jsonb;
 
+alter table rally_sections
+  add column if not exists flag_status text not null default 'green';
+
+alter table rally_sections
+  add column if not exists flag_ts bigint not null default 0;
+
+alter table rally_cars
+  add column if not exists flag_ack jsonb;
+
 -- Optional open policies if using anon key instead of service_role:
 -- create policy "rally_sections_select" on rally_sections for select using (true);
 -- create policy "rally_sections_insert" on rally_sections for insert with check (true);
