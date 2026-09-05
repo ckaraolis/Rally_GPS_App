@@ -44,7 +44,9 @@ function kmlColor(hex, alpha = "ff") {
 }
 
 function isLive(car) {
-  return Boolean(car.tracking && car.last && Date.now() - car.last.ts < STALE_MS);
+  if (!car.tracking || !car.last) return false;
+  if (car.reconnectRequested) return true;
+  return Date.now() - car.last.ts < STALE_MS;
 }
 
 function reviveLastFix(car) {

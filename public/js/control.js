@@ -243,7 +243,8 @@ function renderList(cars) {
   }
   list.innerHTML = cars
     .map((car) => {
-      const state = car.live ? "LIVE" : car.tracking ? "LOST" : "STOPPED";
+      const held = Boolean(car.reconnectRequested);
+      const state = car.live ? (held ? "LIVE · LAST GPS" : "LIVE") : car.tracking ? "LOST" : "STOPPED";
       const speed =
         car.last?.speed == null ? "—" : `${Math.round(car.last.speed * 3.6)} km/h`;
       const section = car.section?.label || "Off route";
@@ -317,6 +318,12 @@ function renderList(cars) {
         btn.textContent = "Refresh sent";
         const car = latestCars.find((c) => c.id === id);
         if (car) car.reconnectRequested = true;
+        await refresh();
+        const updated = latestCars.find((c) => c.id === id);
+        if (updated?.last) {
+          map.flyTo([updated.last.lat, updated.last.lon], 14);
+          markers.get(id)?.openPopup();
+        }
       } catch (err) {
         btn.disabled = false;
         btn.textContent = err.message || "Failed";
