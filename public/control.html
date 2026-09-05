@@ -43,7 +43,7 @@
     <section>
       <p class="eyebrow">Cars on course</p>
       <button id="refreshLostBtn" type="button" class="btn btn-ghost">Refresh lost cars</button>
-      <p class="hint">Refresh puts a lost car back on the map at its last GPS and asks the phone to send again. A short signal drop now stays LIVE for 3 minutes.</p>
+      <p class="hint">Refresh is always available while a car is tracking. It holds the last GPS on the map. It cannot move the pin until the phone sends a new fix.</p>
       <ul id="carList" class="car-list">
         <li class="empty">Waiting for drivers to start tracking…</li>
       </ul>
@@ -51,6 +51,6 @@
   </aside>
   <div id="map" class="control-map"></div>
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-  <script src="/js/control.js?v=hold-live1"></script>
+  <script src="/js/control.js?v=hold-live2"></script>
 </body>
 </html>

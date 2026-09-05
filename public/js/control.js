@@ -272,10 +272,8 @@ function renderList(cars) {
                 : ""
             }
             ${
-              state === "LOST"
-                ? `<button type="button" class="mini-toggle" data-refresh="${car.id}">${
-                    car.reconnectRequested ? "Refresh sent" : "Refresh"
-                  }</button>`
+              car.tracking
+                ? `<button type="button" class="mini-toggle" data-refresh="${car.id}">Refresh</button>`
                 : ""
             }
           </div>
