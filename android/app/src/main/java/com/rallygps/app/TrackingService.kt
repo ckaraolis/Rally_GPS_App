@@ -163,7 +163,7 @@ class TrackingService : Service() {
 
         val request = LocationRequest.Builder(Priority.PRIORITY_HIGH_ACCURACY, 3000L)
             .setMinUpdateIntervalMillis(2000L)
-            .setMinUpdateDistanceMeters(2f)
+            .setMinUpdateDistanceMeters(0f)
             .build()
 
         try {
@@ -203,11 +203,8 @@ class TrackingService : Service() {
         val current = session ?: return
         val client = api ?: return
         executor.execute {
-            val requested = runCatching { client.poll(current.id, current.token) }.getOrDefault(false)
-            val stale = lastPingOkAt == 0L || System.currentTimeMillis() - lastPingOkAt > 20_000L
-            if (requested || stale) {
-                handler.post { sendFreshFix() }
-            }
+            runCatching { client.poll(current.id, current.token) }
+            handler.post { sendFreshFix() }
         }
     }
 
