@@ -9,7 +9,7 @@ const { detectSection, haversineMeters } = require("./lib/geo");
 const app = express();
 const PORT = Number(process.env.PORT) || 3000;
 const PUBLIC_BASE_URL = (process.env.PUBLIC_BASE_URL || "").replace(/\/$/, "");
-const STALE_MS = 45_000;
+const STALE_MS = 180_000;
 const MAX_TRAIL = 4000;
 const store = getStore();
 
@@ -45,6 +45,14 @@ function kmlColor(hex, alpha = "ff") {
 
 function isLive(car) {
   return Boolean(car.tracking && car.last && Date.now() - car.last.ts < STALE_MS);
+}
+
+function reviveLastFix(car) {
+  car.reconnectRequested = Date.now();
+  car.tracking = true;
+  if (car.last && typeof car.last.lat === "number" && typeof car.last.lon === "number") {
+    car.last = { ...car.last, ts: Date.now() };
+  }
 }
 
 function sectionFlag(section) {
@@ -311,9 +319,15 @@ app.post(
   asyncHandler(async (req, res) => {
     const car = await store.getCar(req.params.id);
     if (!car) return res.status(404).json({ error: "Car not found." });
-    car.reconnectRequested = Date.now();
+    reviveLastFix(car);
     await store.saveCar(car);
-    res.json({ ok: true, id: car.id, reconnectRequested: true });
+    res.json({
+      ok: true,
+      id: car.id,
+      reconnectRequested: true,
+      live: isLive(car),
+      last: car.last || null,
+    });
   })
 );
 
@@ -323,7 +337,7 @@ app.post(
     const cars = await store.listCars();
     const lost = cars.filter((car) => car.tracking && !isLive(car));
     for (const car of lost) {
-      car.reconnectRequested = Date.now();
+      reviveLastFix(car);
       await store.saveCar(car);
     }
     res.json({ ok: true, count: lost.length });
