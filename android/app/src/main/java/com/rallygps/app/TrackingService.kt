@@ -8,12 +8,18 @@ import android.app.Service
 import android.content.Intent
 import android.content.pm.ServiceInfo
 import android.location.Location
+import android.net.ConnectivityManager
+import android.net.Network
+import android.net.NetworkCapabilities
+import android.net.NetworkRequest
 import android.os.Build
 import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
+import android.os.PowerManager
 import androidx.core.app.NotificationCompat
 import androidx.core.app.ServiceCompat
+import com.google.android.gms.location.Granularity
 import com.google.android.gms.location.LocationCallback
 import com.google.android.gms.location.LocationRequest
 import com.google.android.gms.location.LocationResult
@@ -30,6 +36,9 @@ class TrackingService : Service() {
     private var session: Session? = null
     private var lastLocation: Location? = null
     private var lastPingOkAt = 0L
+    private var wakeLock: PowerManager.WakeLock? = null
+    private var flushing = false
+    @Volatile private var running = false
 
     private val pollRunnable = object : Runnable {
         override fun run() {
@@ -38,17 +47,19 @@ class TrackingService : Service() {
         }
     }
 
+    private val networkCallback = object : ConnectivityManager.NetworkCallback() {
+        override fun onAvailable(network: Network) {
+            executor.execute { flushQueue() }
+        }
+    }
+
     private val locationCallback = object : LocationCallback() {
         override fun onLocationResult(result: LocationResult) {
             val location = result.lastLocation ?: return
             lastLocation = location
-            val current = session ?: return
-            val client = api ?: return
-
             val heading = if (location.hasBearing()) location.bearing else null
             val speed = if (location.hasSpeed()) location.speed else null
             val accuracy = if (location.hasAccuracy()) location.accuracy else null
-
             broadcast(
                 tracking = true,
                 lat = location.latitude,
@@ -56,52 +67,9 @@ class TrackingService : Service() {
                 speed = speed,
                 heading = heading,
                 accuracy = accuracy,
-                sent = false,
-                error = null
+                sent = false
             )
-
-            executor.execute {
-                try {
-                    val ping = client.ping(
-                        id = current.id,
-                        token = current.token,
-                        lat = location.latitude,
-                        lon = location.longitude,
-                        heading = heading,
-                        speed = speed,
-                        accuracy = accuracy
-                    )
-                    broadcast(
-                        tracking = true,
-                        lat = location.latitude,
-                        lon = location.longitude,
-                        speed = speed,
-                        heading = heading,
-                        accuracy = accuracy,
-                        sent = true,
-                        error = null,
-                        sectionType = ping.sectionType,
-                        sectionName = ping.sectionName,
-                        sectionLabel = ping.sectionLabel,
-                        sectionId = ping.sectionId,
-                        flagStatus = ping.flagStatus,
-                        flagTs = ping.flagTs,
-                        flagAcked = ping.flagAcked
-                    )
-                    lastPingOkAt = System.currentTimeMillis()
-                } catch (error: Exception) {
-                    broadcast(
-                        tracking = true,
-                        lat = location.latitude,
-                        lon = location.longitude,
-                        speed = speed,
-                        heading = heading,
-                        accuracy = accuracy,
-                        sent = false,
-                        error = error.message ?: "Network error"
-                    )
-                }
-            }
+            queueAndFlush(location)
         }
     }
 
@@ -139,6 +107,18 @@ class TrackingService : Service() {
         return START_STICKY
     }
 
+    override fun onTaskRemoved(rootIntent: Intent?) {
+        if (running && SessionStore.load(this) != null) {
+            val restart = Intent(applicationContext, TrackingService::class.java)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                startForegroundService(restart)
+            } else {
+                startService(restart)
+            }
+        }
+        super.onTaskRemoved(rootIntent)
+    }
+
     private fun startTracking() {
         val current = SessionStore.load(this)
         if (current == null) {
@@ -147,6 +127,10 @@ class TrackingService : Service() {
         }
         session = current
         api = RallyApi(current.serverUrl)
+        running = true
+        fused.removeLocationUpdates(locationCallback)
+        handler.removeCallbacks(pollRunnable)
+        unregisterNetworkCallback()
 
         createChannel()
         val notification = buildNotification()
@@ -160,10 +144,15 @@ class TrackingService : Service() {
                 0
             }
         )
+        acquireWakeLock()
+        registerNetworkCallback()
 
-        val request = LocationRequest.Builder(Priority.PRIORITY_HIGH_ACCURACY, 3000L)
-            .setMinUpdateIntervalMillis(2000L)
+        val request = LocationRequest.Builder(Priority.PRIORITY_HIGH_ACCURACY, 2000L)
+            .setMinUpdateIntervalMillis(1000L)
             .setMinUpdateDistanceMeters(0f)
+            .setMaxUpdateDelayMillis(2000L)
+            .setWaitForAccurateLocation(false)
+            .setGranularity(Granularity.GRANULARITY_FINE)
             .build()
 
         try {
@@ -171,6 +160,7 @@ class TrackingService : Service() {
             broadcast(tracking = true)
             handler.removeCallbacks(pollRunnable)
             handler.postDelayed(pollRunnable, 4000L)
+            executor.execute { flushQueue() }
         } catch (error: SecurityException) {
             broadcast(tracking = false, error = "Location permission missing")
             stopSelf()
@@ -178,12 +168,16 @@ class TrackingService : Service() {
     }
 
     private fun stopTracking() {
+        running = false
         handler.removeCallbacks(pollRunnable)
         fused.removeLocationUpdates(locationCallback)
+        unregisterNetworkCallback()
+        releaseWakeLock()
         val current = session
         val client = api
         if (current != null && client != null) {
             executor.execute {
+                flushQueue()
                 runCatching { client.stop(current.id, current.token) }
             }
         }
@@ -193,13 +187,17 @@ class TrackingService : Service() {
     }
 
     override fun onDestroy() {
+        running = false
         handler.removeCallbacks(pollRunnable)
         fused.removeLocationUpdates(locationCallback)
+        unregisterNetworkCallback()
+        releaseWakeLock()
         executor.shutdownNow()
         super.onDestroy()
     }
 
     private fun pollAndRefresh() {
+        if (wakeLock?.isHeld != true) acquireWakeLock()
         val current = session ?: return
         val client = api ?: return
         executor.execute {
@@ -210,7 +208,6 @@ class TrackingService : Service() {
 
     private fun sendFreshFix() {
         val current = session ?: return
-        val client = api ?: return
         try {
             fused.getCurrentLocation(
                 Priority.PRIORITY_HIGH_ACCURACY,
@@ -218,62 +215,103 @@ class TrackingService : Service() {
             ).addOnSuccessListener { location ->
                 val fix = location ?: lastLocation ?: return@addOnSuccessListener
                 lastLocation = fix
-                pingLocation(current, client, fix)
+                queueAndFlush(fix)
             }.addOnFailureListener {
                 val fix = lastLocation ?: return@addOnFailureListener
-                pingLocation(current, client, fix)
+                queueAndFlush(fix)
             }
         } catch (_: SecurityException) {
             /* permission dropped */
         }
     }
 
-    private fun pingLocation(current: Session, client: RallyApi, location: Location) {
-        val heading = if (location.hasBearing()) location.bearing else null
-        val speed = if (location.hasSpeed()) location.speed else null
-        val accuracy = if (location.hasAccuracy()) location.accuracy else null
+    private fun queueAndFlush(location: Location) {
         executor.execute {
-            try {
-                val ping = client.ping(
-                    id = current.id,
-                    token = current.token,
-                    lat = location.latitude,
-                    lon = location.longitude,
-                    heading = heading,
-                    speed = speed,
-                    accuracy = accuracy
-                )
-                lastPingOkAt = System.currentTimeMillis()
-                broadcast(
-                    tracking = true,
-                    lat = location.latitude,
-                    lon = location.longitude,
-                    speed = speed,
-                    heading = heading,
-                    accuracy = accuracy,
-                    sent = true,
-                    error = null,
-                    sectionType = ping.sectionType,
-                    sectionName = ping.sectionName,
-                    sectionLabel = ping.sectionLabel,
-                    sectionId = ping.sectionId,
-                    flagStatus = ping.flagStatus,
-                    flagTs = ping.flagTs,
-                    flagAcked = ping.flagAcked
-                )
-            } catch (error: Exception) {
-                broadcast(
-                    tracking = true,
-                    lat = location.latitude,
-                    lon = location.longitude,
-                    speed = speed,
-                    heading = heading,
-                    accuracy = accuracy,
-                    sent = false,
-                    error = error.message ?: "Network error"
-                )
-            }
+            FixQueue.enqueue(this, FixQueue.Fix.from(location))
+            flushQueue()
         }
+    }
+
+    private fun flushQueue() {
+        if (flushing) return
+        val current = session ?: return
+        val client = api ?: return
+        flushing = true
+        try {
+            while (true) {
+                val batch = FixQueue.peek(this, 80)
+                if (batch.isEmpty()) break
+                try {
+                    val ping = client.pingBatch(current.id, current.token, batch)
+                    FixQueue.removeFirst(this, batch.size)
+                    lastPingOkAt = System.currentTimeMillis()
+                    val last = batch.last()
+                    broadcast(
+                        tracking = true,
+                        lat = last.lat,
+                        lon = last.lon,
+                        speed = last.speed,
+                        heading = last.heading,
+                        accuracy = last.accuracy,
+                        sent = true,
+                        queued = FixQueue.size(this),
+                        sectionType = ping.sectionType,
+                        sectionName = ping.sectionName,
+                        sectionLabel = ping.sectionLabel,
+                        sectionId = ping.sectionId,
+                        flagStatus = ping.flagStatus,
+                        flagTs = ping.flagTs,
+                        flagAcked = ping.flagAcked
+                    )
+                } catch (error: Exception) {
+                    if (error.message?.contains("Unknown car", ignoreCase = true) == true) {
+                        running = false
+                    }
+                    val last = lastLocation
+                    broadcast(
+                        tracking = true,
+                        lat = last?.latitude,
+                        lon = last?.longitude,
+                        speed = last?.takeIf { it.hasSpeed() }?.speed,
+                        heading = last?.takeIf { it.hasBearing() }?.bearing,
+                        accuracy = last?.takeIf { it.hasAccuracy() }?.accuracy,
+                        sent = false,
+                        queued = FixQueue.size(this),
+                        error = "queued"
+                    )
+                    break
+                }
+            }
+        } finally {
+            flushing = false
+        }
+    }
+
+    private fun acquireWakeLock() {
+        if (wakeLock?.isHeld == true) return
+        val pm = getSystemService(PowerManager::class.java)
+        wakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "rallygps:tracking").apply {
+            setReferenceCounted(false)
+            acquire(12 * 60 * 60 * 1000L)
+        }
+    }
+
+    private fun releaseWakeLock() {
+        if (wakeLock?.isHeld == true) wakeLock?.release()
+        wakeLock = null
+    }
+
+    private fun registerNetworkCallback() {
+        val cm = getSystemService(ConnectivityManager::class.java)
+        val request = NetworkRequest.Builder()
+            .addCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
+            .build()
+        runCatching { cm.registerNetworkCallback(request, networkCallback) }
+    }
+
+    private fun unregisterNetworkCallback() {
+        val cm = getSystemService(ConnectivityManager::class.java)
+        runCatching { cm.unregisterNetworkCallback(networkCallback) }
     }
 
     private fun broadcast(
@@ -284,6 +322,7 @@ class TrackingService : Service() {
         heading: Float? = null,
         accuracy: Float? = null,
         sent: Boolean = false,
+        queued: Int = 0,
         error: String? = null,
         sectionType: String? = null,
         sectionName: String? = null,
@@ -297,6 +336,7 @@ class TrackingService : Service() {
             setPackage(packageName)
             putExtra(TrackingActions.EXTRA_TRACKING, tracking)
             putExtra(TrackingActions.EXTRA_SENT, sent)
+            putExtra(TrackingActions.EXTRA_QUEUED, queued)
             if (lat != null) putExtra(TrackingActions.EXTRA_LAT, lat)
             if (lon != null) putExtra(TrackingActions.EXTRA_LON, lon)
             if (speed != null) putExtra(TrackingActions.EXTRA_SPEED, speed)
@@ -348,6 +388,7 @@ class TrackingService : Service() {
             .setContentIntent(openApp)
             .addAction(0, getString(R.string.stop_tracking), stopIntent)
             .setOngoing(true)
+            .setForegroundServiceBehavior(NotificationCompat.FOREGROUND_SERVICE_IMMEDIATE)
             .build()
     }
 

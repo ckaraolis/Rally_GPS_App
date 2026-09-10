@@ -10,6 +10,7 @@ object TrackingActions {
     const val EXTRA_ACCURACY = "accuracy"
     const val EXTRA_ERROR = "error"
     const val EXTRA_SENT = "sent"
+    const val EXTRA_QUEUED = "queued"
     const val EXTRA_SECTION_TYPE = "sectionType"
     const val EXTRA_SECTION_NAME = "sectionName"
     const val EXTRA_SECTION_LABEL = "sectionLabel"

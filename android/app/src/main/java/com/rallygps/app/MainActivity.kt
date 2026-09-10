@@ -9,8 +9,11 @@ import android.content.pm.PackageManager
 import android.animation.ObjectAnimator
 import android.animation.ValueAnimator
 import android.graphics.Color
+import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.os.PowerManager
+import android.provider.Settings
 import android.view.View
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
@@ -69,9 +72,14 @@ class MainActivity : AppCompatActivity() {
             tracking = intent.getBooleanExtra(TrackingActions.EXTRA_TRACKING, false)
 
             val error = intent.getStringExtra(TrackingActions.EXTRA_ERROR)
-            if (!error.isNullOrBlank()) {
+            val queued = intent.getIntExtra(TrackingActions.EXTRA_QUEUED, 0)
+            val sent = intent.getBooleanExtra(TrackingActions.EXTRA_SENT, false)
+            if (!error.isNullOrBlank() && error != "queued") {
                 showError(error)
-            } else {
+            } else if (error == "queued" || queued > 0) {
+                binding.errorRead.visibility = View.VISIBLE
+                binding.errorRead.text = getString(R.string.status_hint_queued)
+            } else if (sent) {
                 binding.errorRead.visibility = View.GONE
             }
 
@@ -406,11 +414,29 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    private fun askUnrestrictedBattery() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) return
+        val pm = getSystemService(PowerManager::class.java) ?: return
+        if (pm.isIgnoringBatteryOptimizations(packageName)) return
+        try {
+            startActivity(
+                Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS).setData(
+                    Uri.parse("package:$packageName")
+                )
+            )
+        } catch (_: Exception) {
+            runCatching {
+                startActivity(Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS))
+            }
+        }
+    }
+
     private fun startTrackingService() {
         if (session == null) {
             showError("Join the rally first.")
             return
         }
+        askUnrestrictedBattery()
         val intent = Intent(this, TrackingService::class.java)
         ContextCompat.startForegroundService(this, intent)
         tracking = true

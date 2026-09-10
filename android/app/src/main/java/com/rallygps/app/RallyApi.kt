@@ -4,15 +4,16 @@ import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
+import org.json.JSONArray
 import org.json.JSONObject
 import java.util.concurrent.TimeUnit
 
 class RallyApi(baseUrl: String) {
     private val root = baseUrl.trimEnd('/')
     private val client = OkHttpClient.Builder()
-        .connectTimeout(10, TimeUnit.SECONDS)
-        .readTimeout(10, TimeUnit.SECONDS)
-        .writeTimeout(10, TimeUnit.SECONDS)
+        .connectTimeout(12, TimeUnit.SECONDS)
+        .readTimeout(25, TimeUnit.SECONDS)
+        .writeTimeout(25, TimeUnit.SECONDS)
         .build()
     private val jsonType = "application/json; charset=utf-8".toMediaType()
 
@@ -58,7 +59,8 @@ class RallyApi(baseUrl: String) {
         lon: Double,
         heading: Float?,
         speed: Float?,
-        accuracy: Float?
+        accuracy: Float?,
+        ts: Long? = null
     ): PingResult {
         val payload = JSONObject()
             .put("id", id)
@@ -68,9 +70,23 @@ class RallyApi(baseUrl: String) {
         if (heading != null && !heading.isNaN()) payload.put("heading", heading.toDouble())
         if (speed != null && !speed.isNaN()) payload.put("speed", speed.toDouble())
         if (accuracy != null && !accuracy.isNaN()) payload.put("accuracy", accuracy.toDouble())
+        if (ts != null) payload.put("ts", ts)
+        return postPing("$root/api/ping", payload)
+    }
 
+    fun pingBatch(id: String, token: String, points: List<FixQueue.Fix>): PingResult {
+        val arr = JSONArray()
+        points.forEach { arr.put(it.toJson()) }
+        val payload = JSONObject()
+            .put("id", id)
+            .put("token", token)
+            .put("points", arr)
+        return postPing("$root/api/ping-batch", payload)
+    }
+
+    private fun postPing(url: String, payload: JSONObject): PingResult {
         val request = Request.Builder()
-            .url("$root/api/ping")
+            .url(url)
             .post(payload.toString().toRequestBody(jsonType))
             .build()
 

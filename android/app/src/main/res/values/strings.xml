@@ -11,9 +11,10 @@
     <string name="status_ready">READY</string>
     <string name="status_tracking">TRACKING</string>
     <string name="status_hint_ready">Tap start when you are on the road</string>
-    <string name="status_hint_tracking">Keep GPS allowed. This app can track with the screen off.</string>
+    <string name="status_hint_tracking">Leave this running. GPS stays live if you switch apps or lock the screen.</string>
+    <string name="status_hint_queued">No GSM. GPS is saved on the phone and will appear on the map when signal returns.</string>
     <string name="notification_title">Rally GPS tracking</string>
-    <string name="notification_text">Sending live position to race control</string>
+    <string name="notification_text">GPS is live in background for race control</string>
     <string name="channel_name">Live tracking</string>
     <string name="channel_desc">Shows while the car is being tracked</string>
 </resources>

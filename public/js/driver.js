@@ -12,8 +12,12 @@ const errorRead = document.getElementById("errorRead");
 const secureNote = document.getElementById("secureNote");
 
 const KEY = "rallyGpsSession";
+const QUEUE_KEY = "rallyGpsQueue";
 const STOPPED_SPEED_MPS = 1.2;
 const STOPPED_ALERT_MS = 20_000;
+const MAX_QUEUE = 2000;
+const MIN_QUEUE_METERS = 3;
+const MIN_QUEUE_MS = 4000;
 
 let session = null;
 let watchId = null;
@@ -21,6 +25,8 @@ let wakeLock = null;
 let tracking = false;
 let lastFix = null;
 let lastPingOkAt = 0;
+let flushing = false;
+let bgKeepalive = null;
 let inStage = false;
 let stageName = null;
 let stageId = null;
@@ -240,7 +246,7 @@ async function startTracking() {
   tracking = true;
   toggleBtn.textContent = "Stop tracking";
   toggleBtn.className = "btn btn-stop";
-  setLamp("lamp-live", "TRACKING", "Keep this screen open while you are on the stage");
+  setLamp("lamp-live", "TRACKING", "GPS stays on if you switch apps. Keep this tab open; lock-screen tracking needs the Android app.");
   updateRoadSectionUi();
   await requestWakeLock();
 
@@ -249,6 +255,8 @@ async function startTracking() {
     maximumAge: 1000,
     timeout: 15000,
   });
+  startBackgroundKeepalive();
+  flushQueue();
 }
 
 async function stopTracking() {
@@ -262,6 +270,7 @@ async function stopTracking() {
     navigator.geolocation.clearWatch(watchId);
     watchId = null;
   }
+  stopBackgroundKeepalive();
   releaseWakeLock();
   toggleBtn.textContent = "Start tracking";
   toggleBtn.className = "btn btn-start";
@@ -341,55 +350,156 @@ async function onFix(pos) {
   document.getElementById("fixRead").textContent = new Date().toLocaleTimeString();
   document.getElementById("coordRead").textContent = `${lat.toFixed(6)}, ${lon.toFixed(6)}`;
 
+  enqueueFix(pos);
+  const result = await flushQueue();
+  if (result?.busy) return;
+  if (result?.data) {
+    applyPingResult(result.data, speed);
+    return;
+  }
+  if (!result?.ok) {
+    setLamp(
+      "lamp-warn",
+      "NO NETWORK",
+      "GPS is saved on this phone. Race control will get the route when GSM returns."
+    );
+  }
+}
+
+function applyPingResult(data, speed) {
+  lastPingOkAt = Date.now();
+  setLamp(
+    "lamp-live",
+    document.hidden ? "TRACKING · BACKGROUND" : "TRACKING",
+    document.hidden
+      ? "GPS is still sending with this tab in the background"
+      : "GPS stays on if you switch apps. Keep this tab open; lock-screen tracking needs the Android app."
+  );
+  const wasInStage = inStage;
+  sectionType = data.section?.type || null;
+  sectionLabel = data.section?.label || data.section?.name || null;
+  inStage = sectionType === "stage";
+  stageName = sectionLabel;
+  stageId = data.section?.id || null;
+  applyFlagFromServer(data);
+  if (!wasInStage && inStage) {
+    stoppedSinceMs = null;
+    acknowledgedStop = false;
+    hideCrewAlert();
+  }
+  if (wasInStage && !inStage) {
+    stoppedSinceMs = null;
+    acknowledgedStop = false;
+    hideCrewAlert();
+    hideRedFlagAlert();
+    stageFlagStatus = "green";
+    flagAcked = true;
+  }
+  updateStopWatch(speed);
+  renderMode();
+}
+
+function pointFromFix(pos) {
+  const { latitude: lat, longitude: lon, heading, speed, accuracy } = pos.coords;
+  return {
+    lat,
+    lon,
+    heading: heading == null || Number.isNaN(heading) ? null : heading,
+    speed: speed == null || Number.isNaN(speed) ? null : speed,
+    accuracy: accuracy == null || Number.isNaN(accuracy) ? null : accuracy,
+    ts: Number(pos.timestamp) || Date.now(),
+  };
+}
+
+function loadQueue() {
   try {
-    const res = await fetch("/api/ping", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        id: session.id,
-        token: session.token,
-        lat,
-        lon,
-        heading: heading == null || Number.isNaN(heading) ? null : heading,
-        speed: speed == null || Number.isNaN(speed) ? null : speed,
-        accuracy: accuracy == null || Number.isNaN(accuracy) ? null : accuracy,
-      }),
-    });
-    const data = await res.json().catch(() => ({}));
-    if (res.status === 401) {
-      localStorage.removeItem(KEY);
-      await stopTracking();
-      showError("This car was taken over by another phone. Join again.");
-      setupPanel.classList.remove("hidden");
-      trackPanel.classList.add("hidden");
-      return;
-    }
-    if (!res.ok) throw new Error(data.error || "Ping failed");
-    lastPingOkAt = Date.now();
-    const wasInStage = inStage;
-    sectionType = data.section?.type || null;
-    sectionLabel = data.section?.label || data.section?.name || null;
-    inStage = sectionType === "stage";
-    stageName = sectionLabel;
-    stageId = data.section?.id || null;
-    applyFlagFromServer(data);
-    if (!wasInStage && inStage) {
-      stoppedSinceMs = null;
-      acknowledgedStop = false;
-      hideCrewAlert();
-    }
-    if (wasInStage && !inStage) {
-      stoppedSinceMs = null;
-      acknowledgedStop = false;
-      hideCrewAlert();
-      hideRedFlagAlert();
-      stageFlagStatus = "green";
-      flagAcked = true;
-    }
-    updateStopWatch(speed);
-    renderMode();
+    const parsed = JSON.parse(localStorage.getItem(QUEUE_KEY) || "[]");
+    return Array.isArray(parsed) ? parsed : [];
   } catch {
-    setLamp("lamp-warn", "NO NETWORK", "GPS is on this phone, but the server did not receive it");
+    return [];
+  }
+}
+
+function saveQueue(queue) {
+  localStorage.setItem(QUEUE_KEY, JSON.stringify(queue));
+}
+
+function enqueueFix(pos) {
+  const point = pointFromFix(pos);
+  const queue = loadQueue();
+  const last = queue[queue.length - 1];
+  if (last && !shouldKeepQueued(last, point)) queue[queue.length - 1] = point;
+  else queue.push(point);
+  while (queue.length > MAX_QUEUE) queue.shift();
+  saveQueue(queue);
+}
+
+function shouldKeepQueued(prev, next) {
+  return queueMeters(prev, next) >= MIN_QUEUE_METERS || next.ts - prev.ts >= MIN_QUEUE_MS;
+}
+
+function queueMeters(a, b) {
+  const r = 6371000;
+  const dLat = ((b.lat - a.lat) * Math.PI) / 180;
+  const dLon = ((b.lon - a.lon) * Math.PI) / 180;
+  const lat1 = (a.lat * Math.PI) / 180;
+  const lat2 = (b.lat * Math.PI) / 180;
+  const h =
+    Math.sin(dLat / 2) ** 2 + Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLon / 2) ** 2;
+  return 2 * r * Math.atan2(Math.sqrt(h), Math.sqrt(1 - h));
+}
+
+async function flushQueue() {
+  if (!session) return { ok: false };
+  if (flushing) return { ok: true, busy: true };
+  if (!loadQueue().length) return { ok: true, empty: true };
+  flushing = true;
+  let lastData = null;
+  try {
+    while (true) {
+      const queue = loadQueue();
+      if (!queue.length) break;
+      const batch = queue.slice(0, 80);
+      const res = await fetch("/api/ping-batch", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: session.id, token: session.token, points: batch }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.status === 401) {
+        localStorage.removeItem(KEY);
+        localStorage.removeItem(QUEUE_KEY);
+        await stopTracking();
+        showError("This car was taken over by another phone. Join again.");
+        setupPanel.classList.remove("hidden");
+        trackPanel.classList.add("hidden");
+        return { ok: false };
+      }
+      if (!res.ok) throw new Error(data.error || "Ping failed");
+      saveQueue(queue.slice(batch.length));
+      lastData = data;
+    }
+    return { ok: true, data: lastData };
+  } catch {
+    return { ok: false };
+  } finally {
+    flushing = false;
+  }
+}
+
+function startBackgroundKeepalive() {
+  stopBackgroundKeepalive();
+  bgKeepalive = setInterval(() => {
+    if (!tracking) return;
+    requestFreshFix();
+    flushQueue();
+  }, 3000);
+}
+
+function stopBackgroundKeepalive() {
+  if (bgKeepalive) {
+    clearInterval(bgKeepalive);
+    bgKeepalive = null;
   }
 }
 
@@ -457,10 +567,23 @@ async function pollStageFlag() {
 setInterval(pollStageFlag, 2000);
 
 document.addEventListener("visibilitychange", async () => {
-  if (document.visibilityState === "visible" && tracking) {
+  if (!tracking) return;
+  if (document.visibilityState === "visible") {
     await requestWakeLock();
     requestFreshFix();
+    flushQueue();
+    return;
   }
+  setLamp(
+    "lamp-live",
+    "TRACKING · BACKGROUND",
+    "GPS is still sending with this tab in the background"
+  );
+  requestFreshFix();
+});
+
+window.addEventListener("online", () => {
+  if (tracking) flushQueue();
 });
 
 window.addEventListener("pagehide", () => {

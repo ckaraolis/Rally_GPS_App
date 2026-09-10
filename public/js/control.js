@@ -244,7 +244,13 @@ function renderList(cars) {
   list.innerHTML = cars
     .map((car) => {
       const held = Boolean(car.reconnectRequested);
-      const state = car.live ? (held ? "LIVE · LAST GPS" : "LIVE") : car.tracking ? "LOST" : "STOPPED";
+      const state = car.live
+        ? held
+          ? "LIVE · LAST GPS"
+          : "LIVE"
+        : car.tracking
+          ? "NO SIGNAL · LAST GPS"
+          : "STOPPED";
       const speed =
         car.last?.speed == null ? "—" : `${Math.round(car.last.speed * 3.6)} km/h`;
       const section = car.section?.label || "Off route";

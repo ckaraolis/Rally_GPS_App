@@ -11,6 +11,8 @@ const PORT = Number(process.env.PORT) || 3000;
 const PUBLIC_BASE_URL = (process.env.PUBLIC_BASE_URL || "").replace(/\/$/, "");
 const STALE_MS = 180_000;
 const MAX_TRAIL = 4000;
+const MAX_BATCH = 250;
+const MAX_POINT_AGE_MS = 24 * 60 * 60 * 1000;
 const store = getStore();
 
 app.set("trust proxy", 1);
@@ -103,6 +105,80 @@ function validCoord(lat, lon) {
   );
 }
 
+function finiteOrNull(value) {
+  const n = Number(value);
+  return Number.isFinite(n) ? n : null;
+}
+
+function normalizeTs(raw) {
+  const ts = Number(raw);
+  const now = Date.now();
+  if (!Number.isFinite(ts)) return now;
+  if (ts > now + 120_000) return now;
+  if (now - ts > MAX_POINT_AGE_MS) return now;
+  return ts;
+}
+
+function normalizePoint(raw) {
+  if (!raw || typeof raw !== "object") return null;
+  const lat = Number(raw.lat);
+  const lon = Number(raw.lon);
+  if (!validCoord(lat, lon)) return null;
+  const speed = finiteOrNull(raw.speed);
+  return {
+    lat,
+    lon,
+    heading: finiteOrNull(raw.heading),
+    speed: speed == null ? null : Math.max(0, speed),
+    accuracy: finiteOrNull(raw.accuracy),
+    ts: normalizeTs(raw.ts),
+  };
+}
+
+function applyFix(car, point, sections, { detect = true } = {}) {
+  car.tracking = true;
+  if (!car.last || point.ts >= Number(car.last.ts) || !Number.isFinite(Number(car.last.ts))) {
+    car.last = {
+      lat: point.lat,
+      lon: point.lon,
+      heading: point.heading,
+      speed: point.speed,
+      accuracy: point.accuracy,
+      ts: point.ts,
+    };
+  }
+
+  if (!Array.isArray(car.trail)) car.trail = [];
+  const prev = car.trail[car.trail.length - 1];
+  if (!prev || haversineMeters(prev, point) >= 3) {
+    car.trail.push({ lat: point.lat, lon: point.lon, ts: point.ts });
+    if (car.trail.length > MAX_TRAIL) car.trail.splice(0, car.trail.length - MAX_TRAIL);
+  }
+
+  if (!detect || !sections) return;
+  try {
+    const previousStageId = car.section?.type === "stage" ? car.section.id : null;
+    car.section = detectSection({ lat: point.lat, lon: point.lon }, sections);
+    const nowStageId = car.section?.type === "stage" ? car.section.id : null;
+    if (nowStageId !== previousStageId) car.crewStatus = null;
+  } catch (err) {
+    console.error("section detect failed", err.message);
+  }
+}
+
+function pingPayload(car) {
+  const { flagStatus, flagTs } = sectionFlag(car.section);
+  return {
+    ok: true,
+    receivedAt: car.last?.ts || Date.now(),
+    section: car.section || null,
+    crewStatus: car.crewStatus || null,
+    flagStatus,
+    flagTs,
+    flagAcked: hasAckedFlag(car, car.section),
+  };
+}
+
 function asyncHandler(fn) {
   return (req, res, next) => {
     Promise.resolve(fn(req, res, next)).catch(next);
@@ -168,57 +244,50 @@ app.post(
 app.post(
   "/api/ping",
   asyncHandler(async (req, res) => {
-    const { id, token, lat, lon, heading, speed, accuracy } = req.body;
-    const car = await store.getCar(id);
-    if (!car || car.token !== token) {
+    const car = await store.getCar(req.body.id);
+    if (!car || car.token !== req.body.token) {
       return res.status(401).json({ error: "Unknown car session. Register again." });
     }
-    if (!validCoord(lat, lon)) {
+    const point = normalizePoint(req.body);
+    if (!point) {
       return res.status(400).json({ error: "Invalid coordinates." });
     }
 
-    const ts = Date.now();
-    car.tracking = true;
-    car.last = {
-      lat,
-      lon,
-      heading: typeof heading === "number" && Number.isFinite(heading) ? heading : null,
-      speed: typeof speed === "number" && Number.isFinite(speed) ? Math.max(0, speed) : null,
-      accuracy: typeof accuracy === "number" && Number.isFinite(accuracy) ? accuracy : null,
-      ts,
-    };
-
-    if (!Array.isArray(car.trail)) car.trail = [];
-    const prev = car.trail[car.trail.length - 1];
-    if (!prev || haversineMeters(prev, car.last) >= 3) {
-      car.trail.push({ lat, lon, ts });
-      if (car.trail.length > MAX_TRAIL) car.trail.splice(0, car.trail.length - MAX_TRAIL);
-    }
-
-    try {
-      const sections = await store.listSections();
-      const previousStageId = car.section?.type === "stage" ? car.section.id : null;
-      car.section = detectSection({ lat, lon }, sections);
-      const nowStageId = car.section?.type === "stage" ? car.section.id : null;
-      if (nowStageId !== previousStageId) {
-        car.crewStatus = null;
-      }
-    } catch (err) {
-      console.error("section detect failed", err.message);
-    }
-
+    const sections = await store.listSections().catch(() => []);
+    applyFix(car, point, sections, { detect: true });
     car.reconnectRequested = null;
     await store.saveCar(car);
-    const { flagStatus, flagTs } = sectionFlag(car.section);
-    res.json({
-      ok: true,
-      receivedAt: ts,
-      section: car.section || null,
-      crewStatus: car.crewStatus || null,
-      flagStatus,
-      flagTs,
-      flagAcked: hasAckedFlag(car, car.section),
-    });
+    res.json(pingPayload(car));
+  })
+);
+
+app.post(
+  "/api/ping-batch",
+  asyncHandler(async (req, res) => {
+    const car = await store.getCar(req.body.id);
+    if (!car || car.token !== req.body.token) {
+      return res.status(401).json({ error: "Unknown car session. Register again." });
+    }
+    const rawPoints = Array.isArray(req.body.points) ? req.body.points : [];
+    if (!rawPoints.length) {
+      return res.status(400).json({ error: "No GPS points." });
+    }
+    const points = rawPoints
+      .slice(0, MAX_BATCH)
+      .map(normalizePoint)
+      .filter(Boolean)
+      .sort((a, b) => a.ts - b.ts);
+    if (!points.length) {
+      return res.status(400).json({ error: "Invalid coordinates." });
+    }
+
+    const sections = await store.listSections().catch(() => []);
+    for (let i = 0; i < points.length; i += 1) {
+      applyFix(car, points[i], sections, { detect: i === points.length - 1 });
+    }
+    car.reconnectRequested = null;
+    await store.saveCar(car);
+    res.json({ ...pingPayload(car), accepted: points.length });
   })
 );
 
