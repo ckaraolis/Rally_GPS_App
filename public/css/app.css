@@ -660,6 +660,127 @@ input {
   transform: rotate(-45deg);
   box-sizing: border-box;
 }
+.kmz-custom-icon {
+  width: 32px;
+  height: 32px;
+  object-fit: contain;
+  flex-shrink: 0;
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.55));
+}
+img.kmz-ge-icon,
+.leaflet-marker-icon.kmz-ge-icon {
+  background: none !important;
+  border: none !important;
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.55));
+}
+.leaflet-tooltip.kmz-ge-label {
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+  color: #fff8e8;
+  font-family: "Barlow Condensed", sans-serif;
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.03em;
+  text-shadow: 0 1px 2px #000, 0 0 4px #000;
+  padding: 0 4px !important;
+  white-space: nowrap;
+}
+.leaflet-tooltip.kmz-ge-label::before {
+  display: none !important;
+}
+.kmz-refuel-mark {
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+  background: #22c55e;
+  border: 2px solid #14532d;
+  border-radius: 3px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.45);
+  position: relative;
+}
+.kmz-refuel-mark::after {
+  content: "";
+  position: absolute;
+  left: 4px;
+  top: 3px;
+  width: 6px;
+  height: 8px;
+  border: 2px solid #fff;
+  border-radius: 0 0 2px 2px;
+}
+.kmz-list-icon.custom {
+  width: 16px;
+  height: 16px;
+  object-fit: contain;
+  border-radius: 0;
+  background: none;
+}
+.kmz-list-icon.refuel {
+  width: 14px;
+  height: 14px;
+  background: #22c55e;
+  border: 2px solid #14532d;
+  border-radius: 3px;
+  box-sizing: border-box;
+}
+.pin-icon-pack {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 8px;
+  margin: 10px 0 12px;
+}
+.pin-icon-slot {
+  display: grid;
+  grid-template-columns: 40px 1fr;
+  gap: 10px;
+  align-items: center;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--line);
+  cursor: pointer;
+}
+.pin-icon-preview {
+  width: 40px;
+  height: 40px;
+  display: grid;
+  place-items: center;
+  background: #1a1b16;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  overflow: hidden;
+}
+.pin-icon-preview img {
+  width: 32px;
+  height: 32px;
+  object-fit: contain;
+}
+.pin-icon-meta strong {
+  display: block;
+  font-size: 1rem;
+  text-transform: uppercase;
+}
+.pin-icon-meta small {
+  display: block;
+  color: var(--muted);
+}
+.pin-icon-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 4px;
+}
+.pin-icon-upload {
+  display: inline-flex;
+  align-items: center;
+  min-height: 28px;
+  padding: 0 8px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  color: var(--amber);
+  font-size: 0.75rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
 
 .leaflet-marker-num {
   font-family: var(--font);

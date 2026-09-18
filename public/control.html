@@ -8,7 +8,7 @@
   <link rel="manifest" href="/manifest.json" />
   <link rel="icon" href="/icons/icon.svg" type="image/svg+xml" />
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-  <link rel="stylesheet" href="/css/app.css" />
+  <link rel="stylesheet" href="/css/app.css?v=gepins1" />
 </head>
 <body class="control-body">
   <div class="tape" aria-hidden="true"></div>
@@ -58,8 +58,9 @@
 
     <div class="earth-box">
       <p class="eyebrow">Rally route</p>
-      <p class="hint">Upload a KMZ/KML <strong>for the selected rally</strong> only. Other events keep their own routes. <strong>Blue</strong> paths = road, <strong>Red</strong> paths = stages. <strong>Red circles</strong> = time controls, <strong>red flags</strong> = start/finish/stop, like Google Earth. On a stage, switch <strong>Green flag</strong> / <strong>Red flag</strong>.</p>
+      <p class="hint">Upload a KMZ/KML <strong>for the selected rally</strong> only. Other events keep their own routes. <strong>Blue</strong> paths = road, <strong>Red</strong> paths = stages. TC / Start / Finish / Stop / Refueling use Google Earth icons on the map. Upload a PNG here only if you want to replace one.</p>
       <p id="routeTarget" class="hint"></p>
+      <div id="pinIconPack" class="pin-icon-pack" hidden></div>
       <label class="file-btn">
         Upload KMZ / KML
         <input id="routeFile" type="file" accept=".kmz,.kml,application/vnd.google-earth.kmz,application/vnd.google-earth.kml+xml" hidden />
@@ -84,6 +85,6 @@
   </aside>
   <div id="map" class="control-map"></div>
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-  <script src="/js/control.js?v=kmzpins2"></script>
+  <script src="/js/control.js?v=gepins1"></script>
 </body>
 </html>

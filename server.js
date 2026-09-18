@@ -19,24 +19,33 @@ const store = getStore();
 async function liveSections() {
   try {
     const live = await store.getLiveRally();
-    if (live?.id) return { rallyId: live.id, sections: await store.listSections(live.id) };
+    if (live?.id) {
+      const full = (await store.getRally(live.id).catch(() => live)) || live;
+      return {
+        rallyId: live.id,
+        sections: await store.listSections(live.id),
+        pinIcons: full.pinIcons || {},
+      };
+    }
     const rallies = await store.listRallies();
-    if (rallies.length) return { rallyId: null, sections: [] };
+    if (rallies.length) return { rallyId: null, sections: [], pinIcons: {} };
   } catch {
     /* rallies table missing — fall back to any stored route */
   }
   try {
-    return { rallyId: null, sections: await store.listSections() };
+    return { rallyId: null, sections: await store.listSections(), pinIcons: {} };
   } catch {
-    return { rallyId: null, sections: [] };
+    return { rallyId: null, sections: [], pinIcons: {} };
   }
 }
 
 app.set("trust proxy", 1);
 app.disable("x-powered-by");
 app.use(express.json({ limit: "15mb" }));
-app.use("/js", (_req, res, next) => {
-  res.set("Cache-Control", "no-store");
+app.use((req, res, next) => {
+  if (req.path === "/" || /\.(html|css|js)$/i.test(req.path)) {
+    res.set("Cache-Control", "no-store");
+  }
   next();
 });
 
@@ -634,6 +643,76 @@ app.patch(
   })
 );
 
+const PIN_ICON_KINDS = ["tc", "start", "finish", "stop", "refuel"];
+const PIN_ICON_MAX = 400 * 1024;
+
+function normalizeIconBase64(raw) {
+  const text = String(raw || "");
+  return text.includes(",") ? text.split(",").pop() : text;
+}
+
+function iconMimeFromName(filename, fallback = "image/png") {
+  const lower = String(filename || "").toLowerCase();
+  if (lower.endsWith(".jpg") || lower.endsWith(".jpeg")) return "image/jpeg";
+  if (lower.endsWith(".webp")) return "image/webp";
+  if (lower.endsWith(".svg")) return "image/svg+xml";
+  if (lower.endsWith(".gif")) return "image/gif";
+  if (lower.endsWith(".png")) return "image/png";
+  return fallback;
+}
+
+app.post(
+  "/api/rallies/:id/pin-icons",
+  asyncHandler(async (req, res) => {
+    const kind = String(req.body.kind || "").toLowerCase();
+    if (!PIN_ICON_KINDS.includes(kind)) {
+      return res.status(400).json({ error: "kind must be tc, start, finish, stop, or refuel." });
+    }
+    const rally = await store.getRally(req.params.id);
+    if (!rally) return res.status(404).json({ error: "Rally not found." });
+    const filename = String(req.body.filename || "icon.png");
+    const contentBase64 = normalizeIconBase64(req.body.contentBase64);
+    if (!contentBase64) return res.status(400).json({ error: "Image file is required." });
+    const buffer = Buffer.from(contentBase64, "base64");
+    if (!buffer.length) return res.status(400).json({ error: "Empty image." });
+    if (buffer.length > PIN_ICON_MAX) {
+      return res.status(400).json({ error: "Image too large (max 400 KB). Use a 64–128 px PNG." });
+    }
+    const mime = String(req.body.mime || iconMimeFromName(filename)).slice(0, 40);
+    if (!/^image\/(png|jpeg|jpg|webp|gif|svg\+xml)$/i.test(mime)) {
+      return res.status(400).json({ error: "Use PNG, JPEG, WebP, GIF, or SVG." });
+    }
+    const pinIcons = { ...(rally.pinIcons || {}) };
+    pinIcons[kind] = {
+      mime: mime === "image/jpg" ? "image/jpeg" : mime,
+      data: contentBase64,
+      name: filename.slice(0, 80),
+    };
+    rally.pinIcons = pinIcons;
+    rally.updatedAt = new Date().toISOString();
+    await store.saveRally(rally);
+    res.json({ ok: true, kind, pinIcons: rally.pinIcons });
+  })
+);
+
+app.delete(
+  "/api/rallies/:id/pin-icons/:kind",
+  asyncHandler(async (req, res) => {
+    const kind = String(req.params.kind || "").toLowerCase();
+    if (!PIN_ICON_KINDS.includes(kind)) {
+      return res.status(400).json({ error: "kind must be tc, start, finish, stop, or refuel." });
+    }
+    const rally = await store.getRally(req.params.id);
+    if (!rally) return res.status(404).json({ error: "Rally not found." });
+    const pinIcons = { ...(rally.pinIcons || {}) };
+    delete pinIcons[kind];
+    rally.pinIcons = pinIcons;
+    rally.updatedAt = new Date().toISOString();
+    await store.saveRally(rally);
+    res.json({ ok: true, kind, pinIcons: rally.pinIcons });
+  })
+);
+
 app.delete(
   "/api/rallies/:id",
   asyncHandler(async (req, res) => {
@@ -774,10 +853,10 @@ app.get(
       const rally = await store.getRally(requested).catch(() => null);
       if (!rally) return res.status(404).json({ error: "Rally not found." });
       const sections = await store.listSections(requested);
-      return res.json({ sections, rallyId: requested });
+      return res.json({ sections, rallyId: requested, pinIcons: rally.pinIcons || {} });
     }
     const live = await liveSections();
-    res.json({ sections: live.sections, rallyId: live.rallyId });
+    res.json({ sections: live.sections, rallyId: live.rallyId, pinIcons: live.pinIcons || {} });
   })
 );
 
@@ -931,11 +1010,31 @@ app.get(
       "Content-Type": "application/vnd.google-earth.kml+xml; charset=utf-8",
       "Cache-Control": "no-store",
     });
-    res.send(buildLiveKml(mapOpen ? cars : [], sections));
+    res.send(buildLiveKml(mapOpen ? cars : [], sections, liveRoute.pinIcons || {}));
   })
 );
 
-function buildLiveKml(cars, sections = []) {
+function pinIconHref(pinIcons, kind, fallback) {
+  const entry = pinIcons?.[kind];
+  if (entry?.data) return `data:${entry.mime || "image/png"};base64,${entry.data}`;
+  return fallback;
+}
+
+function buildKmlPinStyle(id, href, hotspotY = "0.5") {
+  return `    <Style id="${id}">
+      <IconStyle>
+        <scale>1.15</scale>
+        <Icon><href>${xml(href)}</href></Icon>
+        <hotSpot x="0.5" y="${hotspotY}" xunits="fraction" yunits="fraction"/>
+      </IconStyle>
+      <LabelStyle>
+        <color>${kmlColor("#ffffff")}</color>
+        <scale>0.9</scale>
+      </LabelStyle>
+    </Style>`;
+}
+
+function buildLiveKml(cars, sections = [], pinIcons = {}) {
   const list = cars.filter((car) => car.last);
   const styles = PALETTE.map(
     (color, i) => `    <Style id="car${i}">
@@ -964,42 +1063,13 @@ function buildLiveKml(cars, sections = []) {
       <LineStyle><color>${kmlColor("#ff3b30", "ee")}</color><width>5</width></LineStyle>
       <PolyStyle><color>${kmlColor("#ff3b30", "55")}</color></PolyStyle>
     </Style>
-    <Style id="tcStyle">
-      <IconStyle>
-        <color>${kmlColor("#ff3b30")}</color>
-        <scale>1.15</scale>
-        <Icon><href>http://maps.google.com/mapfiles/kml/paddle/red-circle.png</href></Icon>
-        <hotSpot x="0.5" y="0.5" xunits="fraction" yunits="fraction"/>
-      </IconStyle>
-      <LabelStyle>
-        <color>${kmlColor("#ffffff")}</color>
-        <scale>0.9</scale>
-      </LabelStyle>
-    </Style>
-    <Style id="flagStyle">
-      <IconStyle>
-        <color>${kmlColor("#ff3b30")}</color>
-        <scale>1.15</scale>
-        <Icon><href>http://maps.google.com/mapfiles/kml/shapes/flag.png</href></Icon>
-        <hotSpot x="0.5" y="0" xunits="fraction" yunits="fraction"/>
-      </IconStyle>
-      <LabelStyle>
-        <color>${kmlColor("#ffffff")}</color>
-        <scale>0.9</scale>
-      </LabelStyle>
-    </Style>
-    <Style id="pinStyle">
-      <IconStyle>
-        <color>${kmlColor("#f5c518")}</color>
-        <scale>1.1</scale>
-        <Icon><href>http://maps.google.com/mapfiles/kml/paddle/ylw-blank.png</href></Icon>
-        <hotSpot x="0.5" y="0" xunits="fraction" yunits="fraction"/>
-      </IconStyle>
-      <LabelStyle>
-        <color>${kmlColor("#f3ead8")}</color>
-        <scale>0.9</scale>
-      </LabelStyle>
-    </Style>`;
+${buildKmlPinStyle("tcStyle", pinIconHref(pinIcons, "tc", "http://maps.google.com/mapfiles/kml/paddle/red-circle.png"), "0.5")}
+${buildKmlPinStyle("startStyle", pinIconHref(pinIcons, "start", "http://maps.google.com/mapfiles/kml/shapes/flag.png"), "0")}
+${buildKmlPinStyle("finishStyle", pinIconHref(pinIcons, "finish", "http://maps.google.com/mapfiles/kml/shapes/flag.png"), "0")}
+${buildKmlPinStyle("stopStyle", pinIconHref(pinIcons, "stop", "http://maps.google.com/mapfiles/kml/shapes/flag.png"), "0")}
+${buildKmlPinStyle("refuelStyle", pinIconHref(pinIcons, "refuel", "http://maps.google.com/mapfiles/kml/shapes/gas_stations.png"), "0.5")}
+${buildKmlPinStyle("flagStyle", pinIconHref(pinIcons, "start", "http://maps.google.com/mapfiles/kml/shapes/flag.png"), "0")}
+${buildKmlPinStyle("pinStyle", "http://maps.google.com/mapfiles/kml/paddle/ylw-blank.png", "0")}`;
 
   const carMarks = list
     .map((car) => {
@@ -1042,7 +1112,20 @@ function buildLiveKml(cars, sections = []) {
       if (isPin) {
         const p = section.coordinates[0];
         const kind = section.iconKind || p?.iconKind;
-        const styleUrl = kind === "flag" ? "#flagStyle" : kind === "tc" ? "#tcStyle" : "#pinStyle";
+        const styleUrl =
+          kind === "tc"
+            ? "#tcStyle"
+            : kind === "start"
+              ? "#startStyle"
+              : kind === "finish"
+                ? "#finishStyle"
+                : kind === "stop"
+                  ? "#stopStyle"
+                  : kind === "refuel"
+                    ? "#refuelStyle"
+                    : kind === "flag"
+                      ? "#flagStyle"
+                      : "#pinStyle";
         return `      <Placemark>
         <name>${xml(section.name || section.label)}</name>
         <styleUrl>${styleUrl}</styleUrl>

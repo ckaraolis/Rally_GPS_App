@@ -7,6 +7,7 @@ create table if not exists rally_events (
   end_date date,
   status text not null default 'draft' check (status in ('draft', 'live', 'ended')),
   snapshot jsonb,
+  pin_icons jsonb,
   car_count integer not null default 0,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
@@ -26,6 +27,9 @@ create table if not exists rally_control_users (
 );
 
 alter table rally_control_users enable row level security;
+
+alter table rally_events
+  add column if not exists pin_icons jsonb;
 
 -- Attach each KMZ/route to one rally event (not a single system-wide route).
 -- Requires rally_sections from schema_routes.sql.

@@ -50,6 +50,25 @@ const rallyForm = document.getElementById("rallyForm");
 const rallyStatus = document.getElementById("rallyStatus");
 const mapModeHint = document.getElementById("mapModeHint");
 const routeTarget = document.getElementById("routeTarget");
+const pinIconPack = document.getElementById("pinIconPack");
+const PIN_ICON_SLOTS = [
+  { kind: "tc", label: "TC" },
+  { kind: "start", label: "Start" },
+  { kind: "finish", label: "Finish" },
+  { kind: "stop", label: "Stop" },
+  { kind: "refuel", label: "Refueling" },
+];
+const DEFAULT_PIN_IMAGES = {
+  tc: "/icons/pins/red-circle.svg",
+  start: "/icons/pins/flag.svg",
+  finish: "/icons/pins/flag.svg",
+  stop: "/icons/pins/flag.svg",
+  flag: "/icons/pins/flag.svg",
+  refuel: "/icons/pins/gas.svg",
+  pin: "/icons/pins/yellow-pin.svg",
+};
+let pinIcons = {};
+let pinIconsRallyId = null;
 
 function persistSelectedRally(id) {
   selectedRallyId = id || null;
@@ -77,6 +96,9 @@ function updateRouteTarget() {
     if (routeFile) routeFile.disabled = true;
     if (clearRoutes) clearRoutes.disabled = true;
     fileBtn?.classList.add("disabled");
+    pinIcons = {};
+    pinIconsRallyId = null;
+    renderPinIconSlots();
     return;
   }
   if (routeFile) routeFile.disabled = false;
@@ -85,6 +107,7 @@ function updateRouteTarget() {
   if (routeTarget) {
     routeTarget.textContent = `KMZ for ${rally.name} (${String(rally.status || "draft").toUpperCase()}). Other rallies keep their own routes.`;
   }
+  renderPinIconSlots();
 }
 
 copyBtn.addEventListener("click", async () => {
@@ -470,6 +493,10 @@ async function refreshSections() {
     }
     return;
   }
+  const sameRally = pinIconsRallyId === rallyId;
+  pinIcons = data.pinIcons || {};
+  pinIconsRallyId = rallyId;
+  if (!sameRally) renderPinIconSlots();
   renderSections(data.sections || []);
   renderRouteLayers(data.sections || []);
 }
@@ -585,76 +612,208 @@ function isKmzPin(section) {
 function classifyPinKind(name, iconHref) {
   const n = String(name || "").toLowerCase();
   const href = String(iconHref || "").toLowerCase();
-  if (/\b(start|finish|stop)\b/.test(n) || /\/flag|shapes\/flag|triangle/.test(href)) return "flag";
+  if (/\b(refuel|refuelling|refueling|fuel\s*zone|petrol)\b/.test(n) || /gas_stations|fuel/.test(href)) {
+    return "refuel";
+  }
+  if (/\bstart\b/.test(n)) return "start";
+  if (/\bfinish\b/.test(n)) return "finish";
+  if (/\bstop\b/.test(n)) return "stop";
   if (
     /\btc\s*\d|\btc\/|\btc\b|time\s*control/.test(n) ||
     /red-circle|wht-circle|grn-circle|paddle\/[^/]*circle|placemark_circle/.test(href)
   ) {
     return "tc";
   }
-  if (/flag/.test(href)) return "flag";
+  if (/\/flag|shapes\/flag|triangle/.test(href)) return "start";
   if (/circle|paddle/.test(href)) return "tc";
   if (/^tc\d/i.test(String(name || "").replace(/\s+/g, ""))) return "tc";
   return "pin";
 }
 
 function pinKind(section) {
-  return (
+  let kind =
     section.iconKind ||
     section.coordinates?.[0]?.iconKind ||
-    classifyPinKind(section.name, section.iconHref || section.coordinates?.[0]?.iconHref)
-  );
+    classifyPinKind(section.name, section.iconHref || section.coordinates?.[0]?.iconHref);
+  if (kind === "flag") kind = classifyPinKind(section.name, section.iconHref);
+  return kind;
 }
 
 function pinCaption(section) {
   const kind = pinKind(section);
-  const name = String(section.name || "");
   if (kind === "tc") return "Time control";
-  if (kind === "flag") {
-    if (/\bstart\b/i.test(name)) return "Start";
-    if (/\bfinish\b/i.test(name)) return "Finish";
-    if (/\bstop\b/i.test(name)) return "Stop";
-    return "Flag";
-  }
+  if (kind === "start") return "Start";
+  if (kind === "finish") return "Finish";
+  if (kind === "stop") return "Stop";
+  if (kind === "refuel") return "Refueling";
+  if (kind === "flag") return "Flag";
   return "Placemark";
+}
+
+function pinIconSrc(kind) {
+  const entry = pinIcons[kind];
+  if (!entry?.data) return "";
+  return `data:${entry.mime || "image/png"};base64,${entry.data}`;
+}
+
+function safeIconSrc(href) {
+  const raw = String(href || "").trim();
+  if (raw.startsWith("data:image/")) return raw;
+  if (raw.startsWith("/") && !raw.startsWith("//")) return raw;
+  if (/^https?:\/\/[^\s"']+$/i.test(raw)) return raw.replace(/^http:\/\//i, "https://");
+  return "";
+}
+
+function isGoogleMapfile(href) {
+  return /maps\.google\.com\/mapfiles|maps\.gstatic\.com\/mapfiles/i.test(String(href || ""));
+}
+
+function pinImageSrc(section) {
+  const kind = pinKind(section);
+  const custom = pinIconSrc(kind);
+  if (custom) return custom;
+  const href = section.iconHref || section.coordinates?.[0]?.iconHref || "";
+  const safe = safeIconSrc(href);
+  if (safe.startsWith("data:image/")) return safe;
+  if (safe && !isGoogleMapfile(safe)) return safe;
+  return DEFAULT_PIN_IMAGES[kind] || DEFAULT_PIN_IMAGES.pin;
 }
 
 function listIconHtml(section) {
   if (isKmzPin(section)) {
     const kind = pinKind(section);
+    const src = pinImageSrc(section);
+    if (src) return `<img class="kmz-list-icon custom" src="${src}" alt="${escapeHtml(pinCaption(section))}" />`;
     if (kind === "tc") return '<span class="kmz-list-icon tc" title="Time control"></span>';
-    if (kind === "flag") return '<span class="kmz-list-icon flag" title="Flag"></span>';
+    if (kind === "start" || kind === "finish" || kind === "stop" || kind === "flag") {
+      return `<span class="kmz-list-icon flag" title="${escapeHtml(pinCaption(section))}"></span>`;
+    }
+    if (kind === "refuel") return '<span class="kmz-list-icon refuel" title="Refueling"></span>';
     return '<span class="kmz-list-icon pin" title="Placemark"></span>';
   }
   if (section.type === "stage") return '<span class="kmz-list-icon stage" title="Special stage"></span>';
   return '<span class="kmz-list-icon road" title="Road section"></span>';
 }
 
-function kmzPinIcon(section) {
+function kmzLeafletIcon(section) {
   const kind = pinKind(section);
-  const name = escapeHtml(section.name || "Pin");
-  if (kind === "tc") {
-    return L.divIcon({
-      className: "kmz-pin kmz-pin-row",
-      html: `<span class="kmz-pin-label">${name}</span><span class="kmz-tc-mark"><span></span></span>`,
-      iconSize: [150, 24],
-      iconAnchor: [138, 12],
-    });
-  }
-  if (kind === "flag") {
-    return L.divIcon({
-      className: "kmz-pin kmz-pin-row",
-      html: `<span class="kmz-pin-label">${name}</span><span class="kmz-flag-mark"></span>`,
-      iconSize: [150, 24],
-      iconAnchor: [138, 20],
-    });
-  }
-  return L.divIcon({
-    className: "kmz-pin kmz-pin-row",
-    html: `<span class="kmz-pin-label">${name}</span><span class="kmz-pin-mark"></span>`,
-    iconSize: [150, 24],
-    iconAnchor: [138, 20],
+  const src = pinImageSrc(section);
+  const isFlag = kind === "start" || kind === "finish" || kind === "stop" || kind === "flag";
+  const isPin = kind === "pin";
+  return L.icon({
+    iconUrl: src,
+    iconSize: [36, 36],
+    iconAnchor: isFlag ? [8, 34] : isPin ? [18, 34] : [18, 18],
+    className: "kmz-ge-icon",
   });
+}
+
+function bindKmzLabel(marker, section) {
+  const name = section.name || "Pin";
+  if (marker.getTooltip()) {
+    marker.setTooltipContent(name);
+    return marker;
+  }
+  return marker.bindTooltip(name, {
+    permanent: true,
+    direction: "left",
+    offset: [-2, 0],
+    className: "kmz-ge-label",
+    opacity: 1,
+  });
+}
+
+function kmzPinIcon(section) {
+  return kmzLeafletIcon(section);
+}
+
+function renderPinIconSlots() {
+  if (!pinIconPack) return;
+  const rallyId = routeRallyId();
+  if (!rallyId) {
+    pinIconPack.hidden = true;
+    pinIconPack.innerHTML = "";
+    return;
+  }
+  pinIconPack.hidden = false;
+  pinIconPack.innerHTML = PIN_ICON_SLOTS.map(({ kind, label }) => {
+    const custom = pinIconSrc(kind);
+    const src = custom || DEFAULT_PIN_IMAGES[kind];
+    const preview = `<img src="${src}" alt="${escapeHtml(label)}" />`;
+    return `<label class="pin-icon-slot">
+      <span class="pin-icon-preview">${preview}</span>
+      <span class="pin-icon-meta">
+        <strong>${escapeHtml(label)}</strong>
+        <small>${custom ? "Custom image" : "Google Earth icon · upload to replace"}</small>
+        <span class="pin-icon-actions">
+          <span class="pin-icon-upload">Upload
+            <input type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml,image/gif" data-pin-kind="${kind}" hidden />
+          </span>
+          ${custom ? `<button type="button" class="mini-toggle" data-pin-clear="${kind}">Clear</button>` : ""}
+        </span>
+      </span>
+    </label>`;
+  }).join("");
+
+  for (const input of pinIconPack.querySelectorAll("input[data-pin-kind]")) {
+    input.addEventListener("change", async () => {
+      const file = input.files?.[0];
+      input.value = "";
+      if (!file) return;
+      await uploadPinIcon(input.getAttribute("data-pin-kind"), file);
+    });
+  }
+  for (const btn of pinIconPack.querySelectorAll("button[data-pin-clear]")) {
+    btn.addEventListener("click", async (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      await clearPinIcon(btn.getAttribute("data-pin-clear"));
+    });
+  }
+}
+
+async function uploadPinIcon(kind, file) {
+  const rallyId = routeRallyId();
+  if (!rallyId) return;
+  routeStatus.textContent = `Saving ${kind} image…`;
+  try {
+    const contentBase64 = await fileToBase64(file);
+    const res = await fetch(`/api/rallies/${encodeURIComponent(rallyId)}/pin-icons`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        kind,
+        filename: file.name,
+        mime: file.type,
+        contentBase64,
+      }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || "Could not save image");
+    pinIcons = data.pinIcons || pinIcons;
+    routeStatus.textContent = `${kind.toUpperCase()} image saved. Matching KMZ placemarks use it on the map.`;
+    renderPinIconSlots();
+    await refreshSections();
+  } catch (err) {
+    routeStatus.textContent = err.message || "Could not save image";
+  }
+}
+
+async function clearPinIcon(kind) {
+  const rallyId = routeRallyId();
+  if (!rallyId) return;
+  const res = await fetch(`/api/rallies/${encodeURIComponent(rallyId)}/pin-icons/${encodeURIComponent(kind)}`, {
+    method: "DELETE",
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    routeStatus.textContent = data.error || "Could not clear image";
+    return;
+  }
+  pinIcons = data.pinIcons || {};
+  routeStatus.textContent = `${kind.toUpperCase()} image cleared.`;
+  renderPinIconSlots();
+  await refreshSections();
 }
 
 function renderRouteLayers(sections) {
@@ -672,20 +831,22 @@ function renderRouteLayers(sections) {
         existing && typeof existing.getLatLng === "function" && typeof existing.getLatLngs !== "function";
       if (isPinMarker) {
         existing.setLatLng(latlng);
-        existing.setIcon?.(kmzPinIcon(section));
+        existing.setIcon?.(kmzLeafletIcon(section));
+        bindKmzLabel(existing, section);
         existing.setPopupContent?.(`<strong>${escapeHtml(section.name)}</strong>`);
       } else {
         if (existing) {
           map.removeLayer(existing);
           routeLayers.delete(section.id);
         }
-        const marker = L.marker(latlng, {
-          icon: kmzPinIcon(section),
-          zIndexOffset: -200,
-          keyboard: false,
-        })
-          .bindPopup(`<strong>${escapeHtml(section.name)}</strong>`)
-          .addTo(map);
+        const marker = bindKmzLabel(
+          L.marker(latlng, {
+            icon: kmzLeafletIcon(section),
+            zIndexOffset: -200,
+            keyboard: false,
+          }).bindPopup(`<strong>${escapeHtml(section.name)}</strong>`),
+          section
+        ).addTo(map);
         routeLayers.set(section.id, marker);
       }
       continue;
