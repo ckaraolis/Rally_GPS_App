@@ -516,6 +516,39 @@ input {
   opacity: 0.45;
   pointer-events: none;
 }
+.kmz-pin {
+  background: none !important;
+  border: none !important;
+  overflow: visible !important;
+}
+.kmz-pin-mark {
+  display: block;
+  width: 14px;
+  height: 14px;
+  margin: 0 auto;
+  background: #f5c518;
+  border: 2px solid #111;
+  border-radius: 50% 50% 50% 0;
+  transform: rotate(-45deg);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.45);
+}
+.kmz-pin-label {
+  display: block;
+  margin-top: 4px;
+  width: 90px;
+  color: #fff8e8;
+  font-family: "Barlow Condensed", sans-serif;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  text-align: center;
+  text-shadow: 0 1px 2px #000, 0 0 4px #000;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  pointer-events: none;
+}
 
 .leaflet-marker-num {
   font-family: var(--font);

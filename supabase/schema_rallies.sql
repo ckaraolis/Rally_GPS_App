@@ -45,3 +45,40 @@ begin
   end if;
 end $$;
 
+-- Allow KMZ point placemarks (pins) as well as road/stage paths.
+do $$
+declare
+  rec record;
+begin
+  if not exists (
+    select 1 from information_schema.tables
+    where table_schema = 'public' and table_name = 'rally_sections'
+  ) then
+    return;
+  end if;
+
+  for rec in
+    select con.conname
+    from pg_constraint con
+    join pg_class rel on rel.oid = con.conrelid
+    join pg_namespace nsp on nsp.oid = rel.relnamespace
+    where nsp.nspname = 'public'
+      and rel.relname = 'rally_sections'
+      and con.contype = 'c'
+      and (
+        pg_get_constraintdef(con.oid) ilike '%stage%road%'
+        or pg_get_constraintdef(con.oid) ilike '%linestring%polygon%'
+      )
+  loop
+    execute format('alter table rally_sections drop constraint if exists %I', rec.conname);
+  end loop;
+
+  alter table rally_sections drop constraint if exists rally_sections_type_check;
+  alter table rally_sections add constraint rally_sections_type_check
+    check (type in ('stage', 'road', 'marker'));
+
+  alter table rally_sections drop constraint if exists rally_sections_geometry_type_check;
+  alter table rally_sections add constraint rally_sections_geometry_type_check
+    check (geometry_type in ('LineString', 'Polygon', 'Point'));
+end $$;
+

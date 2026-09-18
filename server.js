@@ -810,7 +810,7 @@ app.post(
     if (!parsed.length) {
       return res.status(400).json({
         error:
-          "No LineString/Polygon placemarks found. Export road sections and stages as paths in Google Earth.",
+          "No LineString, Polygon, or Point placemarks found. Export roads, stages, and pins in Google Earth.",
       });
     }
 
@@ -824,6 +824,7 @@ app.post(
       count: saved.length,
       stages: saved.filter((s) => s.type === "stage").length,
       roads: saved.filter((s) => s.type === "road").length,
+      markers: saved.filter((s) => s.type === "marker" || s.geometryType === "Point").length,
       sections: saved.map((s) => ({
         id: s.id,
         name: s.name,
@@ -962,6 +963,18 @@ function buildLiveKml(cars, sections = []) {
     <Style id="stageStyle">
       <LineStyle><color>${kmlColor("#ff3b30", "ee")}</color><width>5</width></LineStyle>
       <PolyStyle><color>${kmlColor("#ff3b30", "55")}</color></PolyStyle>
+    </Style>
+    <Style id="pinStyle">
+      <IconStyle>
+        <color>${kmlColor("#f5c518")}</color>
+        <scale>1.1</scale>
+        <Icon><href>http://maps.google.com/mapfiles/kml/paddle/ylw-blank.png</href></Icon>
+        <hotSpot x="0.5" y="0" xunits="fraction" yunits="fraction"/>
+      </IconStyle>
+      <LabelStyle>
+        <color>${kmlColor("#f3ead8")}</color>
+        <scale>0.9</scale>
+      </LabelStyle>
     </Style>`;
 
   const carMarks = list
@@ -999,8 +1012,20 @@ function buildLiveKml(cars, sections = []) {
     .join("\n");
 
   const routeMarks = sections
-    .filter((s) => s.active !== false && Array.isArray(s.coordinates) && s.coordinates.length >= 2)
+    .filter((s) => s.active !== false && Array.isArray(s.coordinates) && s.coordinates.length)
     .map((section) => {
+      const isPin = section.type === "marker" || section.geometryType === "Point" || section.coordinates.length === 1;
+      if (isPin) {
+        const p = section.coordinates[0];
+        return `      <Placemark>
+        <name>${xml(section.name || section.label)}</name>
+        <styleUrl>#pinStyle</styleUrl>
+        <Point>
+          <altitudeMode>clampToGround</altitudeMode>
+          <coordinates>${p.lon},${p.lat},0</coordinates>
+        </Point>
+      </Placemark>`;
+      }
       const coords = section.coordinates.map((p) => `${p.lon},${p.lat},0`).join(" ");
       const styleUrl = section.type === "stage" ? "#stageStyle" : "#roadStyle";
       if (section.geometryType === "Polygon") {

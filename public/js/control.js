@@ -124,7 +124,7 @@ routeFile.addEventListener("change", async () => {
     });
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || "Upload failed");
-    routeStatus.textContent = `Loaded ${data.count} sections for this rally (${data.stages} stages, ${data.roads} road).`;
+    routeStatus.textContent = `Loaded ${data.count} items for this rally (${data.stages} stages, ${data.roads} road, ${data.markers || 0} pins).`;
     await refreshSections();
   } catch (err) {
     routeStatus.textContent = err.message || "Upload failed";
@@ -509,10 +509,12 @@ function renderSections(sections) {
   }
   sectionList.innerHTML = sections
     .map((section) => {
-      const kind = section.type === "stage" ? "STAGE" : "ROAD";
+      const isPin = section.type === "marker" || section.geometryType === "Point";
+      const kind = isPin ? "PIN" : section.type === "stage" ? "STAGE" : "ROAD";
       const flag = section.flagStatus === "red" ? "red" : "green";
-      const flagButtons =
-        section.type === "stage"
+      const flagButtons = isPin
+        ? ""
+        : section.type === "stage"
           ? `<div class="car-actions">
             <button type="button" class="mini-toggle${flag === "green" ? " active" : ""}" data-flag="green" data-id="${section.id}">Green flag</button>
             <button type="button" class="mini-toggle flag-red${flag === "red" ? " active" : ""}" data-flag="red" data-id="${section.id}">Red flag</button>
@@ -520,10 +522,10 @@ function renderSections(sections) {
           </div>`
           : `<button type="button" class="mini-toggle" data-type="stage" data-id="${section.id}">Make stage</button>`;
       return `<li class="car-row" data-section="${section.id}">
-        <span class="dot" style="background:${section.type === "stage" ? (flag === "red" ? "#ff1a1a" : "#ff3b30") : "#3d7dff"}"></span>
+        <span class="dot" style="background:${isPin ? "#f5c518" : section.type === "stage" ? (flag === "red" ? "#ff1a1a" : "#ff3b30") : "#3d7dff"}"></span>
         <div>
           <strong>${escapeHtml(section.name)}</strong>
-          <small>${kind} · ${escapeHtml(section.label)}${section.type === "stage" ? ` · ${flag === "red" ? "RED FLAG" : "GREEN FLAG"}` : ""}</small>
+          <small>${kind} · ${escapeHtml(section.label)}${!isPin && section.type === "stage" ? ` · ${flag === "red" ? "RED FLAG" : "GREEN FLAG"}` : ""}</small>
           ${flagButtons}
         </div>
       </li>`;
@@ -562,9 +564,31 @@ function renderSections(sections) {
     row.addEventListener("click", () => {
       const section = sections.find((s) => s.id === row.dataset.section);
       const layer = routeLayers.get(section?.id);
-      if (layer) map.fitBounds(layer.getBounds(), { padding: [40, 40] });
+      if (!layer) return;
+      if (typeof layer.getLatLng === "function") {
+        map.setView(layer.getLatLng(), Math.max(map.getZoom(), 15));
+      } else if (layer.getBounds) {
+        map.fitBounds(layer.getBounds(), { padding: [40, 40] });
+      }
     });
   }
+}
+
+function isKmzPin(section) {
+  return (
+    section.type === "marker" ||
+    section.geometryType === "Point" ||
+    (Array.isArray(section.coordinates) && section.coordinates.length === 1)
+  );
+}
+
+function kmzPinIcon(name) {
+  return L.divIcon({
+    className: "kmz-pin",
+    html: `<span class="kmz-pin-mark"></span><span class="kmz-pin-label">${escapeHtml(name || "Pin")}</span>`,
+    iconSize: [90, 36],
+    iconAnchor: [45, 18],
+  });
 }
 
 function renderRouteLayers(sections) {
@@ -575,20 +599,50 @@ function renderRouteLayers(sections) {
     seen.add(section.id);
     const latlngs = section.coordinates.map((p) => [p.lat, p.lon]);
     latlngs.forEach((ll) => bounds.push(ll));
+    const existing = routeLayers.get(section.id);
+    if (isKmzPin(section)) {
+      const latlng = latlngs[0];
+      const isPinMarker =
+        existing && typeof existing.getLatLng === "function" && typeof existing.getLatLngs !== "function";
+      if (isPinMarker) {
+        existing.setLatLng(latlng);
+        existing.setIcon?.(kmzPinIcon(section.name));
+        existing.setPopupContent?.(`<strong>${escapeHtml(section.name)}</strong>`);
+      } else {
+        if (existing) {
+          map.removeLayer(existing);
+          routeLayers.delete(section.id);
+        }
+        const marker = L.marker(latlng, {
+          icon: kmzPinIcon(section.name),
+          zIndexOffset: -200,
+          keyboard: false,
+        })
+          .bindPopup(`<strong>${escapeHtml(section.name)}</strong>`)
+          .addTo(map);
+        routeLayers.set(section.id, marker);
+      }
+      continue;
+    }
     // Blue = road, red = stage (same as KMZ convention)
     const color = section.type === "stage" ? "#ff3b30" : "#3d7dff";
     const weight = section.type === "stage" ? 5 : 3;
-    if (routeLayers.has(section.id)) {
-      const layer = routeLayers.get(section.id);
-      if (layer.setLatLngs) layer.setLatLngs(latlngs);
-      layer.setStyle?.({ color, weight });
-    } else if (section.geometryType === "Polygon") {
-      routeLayers.set(
-        section.id,
-        L.polygon(latlngs, { color, weight: 2, fillOpacity: 0.15 }).addTo(map)
-      );
+    if (existing && existing.setLatLngs) {
+      existing.setLatLngs(latlngs);
+      existing.setStyle?.({ color, weight });
     } else {
-      routeLayers.set(section.id, L.polyline(latlngs, { color, weight, opacity: 0.9 }).addTo(map));
+      if (existing) {
+        map.removeLayer(existing);
+        routeLayers.delete(section.id);
+      }
+      if (section.geometryType === "Polygon") {
+        routeLayers.set(
+          section.id,
+          L.polygon(latlngs, { color, weight: 2, fillOpacity: 0.15 }).addTo(map)
+        );
+      } else {
+        routeLayers.set(section.id, L.polyline(latlngs, { color, weight, opacity: 0.9 }).addTo(map));
+      }
     }
   }
   for (const [id, layer] of routeLayers) {
