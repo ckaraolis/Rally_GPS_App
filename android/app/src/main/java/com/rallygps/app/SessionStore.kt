@@ -6,6 +6,7 @@ import org.json.JSONObject
 object SessionStore {
     private const val PREFS = "rally_gps"
     private const val KEY = "session"
+    private const val KEY_TRACKING = "trackingWanted"
 
     fun save(context: Context, session: Session) {
         val json = JSONObject()
@@ -40,8 +41,24 @@ object SessionStore {
         }
     }
 
+    fun setTrackingWanted(context: Context, wanted: Boolean) {
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .edit()
+            .putBoolean(KEY_TRACKING, wanted)
+            .apply()
+    }
+
+    fun trackingWanted(context: Context): Boolean {
+        return context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .getBoolean(KEY_TRACKING, false)
+    }
+
     fun clear(context: Context) {
-        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().remove(KEY).apply()
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .edit()
+            .remove(KEY)
+            .putBoolean(KEY_TRACKING, false)
+            .apply()
     }
 
     fun saveServerUrl(context: Context, url: String) {

@@ -4,7 +4,7 @@ const path = require("path");
 const express = require("express");
 const { getStore, hasSupabase, pickColor, newToken, PALETTE, rallySummary } = require("./lib/store");
 const auth = require("./lib/auth");
-const { parseKmzOrKml, buildLabel } = require("./lib/kml");
+const { parseKmzOrKml, buildLabel, classifyPinKind } = require("./lib/kml");
 const { detectSection, haversineMeters } = require("./lib/geo");
 
 const app = express();
@@ -43,6 +43,10 @@ app.set("trust proxy", 1);
 app.disable("x-powered-by");
 app.use(express.json({ limit: "15mb" }));
 app.use((req, res, next) => {
+  if (req.path === "/sw.js") {
+    res.set("Service-Worker-Allowed", "/");
+    res.set("Cache-Control", "no-store");
+  }
   if (req.path === "/" || /\.(html|css|js)$/i.test(req.path)) {
     res.set("Cache-Control", "no-store");
   }
@@ -1020,6 +1024,15 @@ function pinIconHref(pinIcons, kind, fallback) {
   return fallback;
 }
 
+function kmlPinKind(section) {
+  const point = section.coordinates?.[0];
+  const classified = classifyPinKind(section.name, section.iconHref || point?.iconHref);
+  if (classified === "refuel") return "refuel";
+  const stored = section.iconKind || point?.iconKind;
+  if (stored === "flag") return classified;
+  return stored || classified;
+}
+
 function buildKmlPinStyle(id, href, hotspotY = "0.5") {
   return `    <Style id="${id}">
       <IconStyle>
@@ -1111,7 +1124,7 @@ ${buildKmlPinStyle("pinStyle", "http://maps.google.com/mapfiles/kml/paddle/ylw-b
       const isPin = section.type === "marker" || section.geometryType === "Point" || section.coordinates.length === 1;
       if (isPin) {
         const p = section.coordinates[0];
-        const kind = section.iconKind || p?.iconKind;
+        const kind = kmlPinKind(section);
         const styleUrl =
           kind === "tc"
             ? "#tcStyle"

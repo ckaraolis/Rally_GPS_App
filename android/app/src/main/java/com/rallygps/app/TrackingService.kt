@@ -128,6 +128,8 @@ class TrackingService : Service() {
         session = current
         api = RallyApi(current.serverUrl)
         running = true
+        isActive = true
+        SessionStore.setTrackingWanted(this, true)
         fused.removeLocationUpdates(locationCallback)
         handler.removeCallbacks(pollRunnable)
         unregisterNetworkCallback()
@@ -162,6 +164,9 @@ class TrackingService : Service() {
             handler.postDelayed(pollRunnable, 4000L)
             executor.execute { flushQueue() }
         } catch (error: SecurityException) {
+            running = false
+            isActive = false
+            SessionStore.setTrackingWanted(this, false)
             broadcast(tracking = false, error = "Location permission missing")
             stopSelf()
         }
@@ -169,6 +174,8 @@ class TrackingService : Service() {
 
     private fun stopTracking() {
         running = false
+        isActive = false
+        SessionStore.setTrackingWanted(this, false)
         handler.removeCallbacks(pollRunnable)
         fused.removeLocationUpdates(locationCallback)
         unregisterNetworkCallback()
@@ -188,6 +195,7 @@ class TrackingService : Service() {
 
     override fun onDestroy() {
         running = false
+        isActive = false
         handler.removeCallbacks(pollRunnable)
         fused.removeLocationUpdates(locationCallback)
         unregisterNetworkCallback()
@@ -361,9 +369,11 @@ class TrackingService : Service() {
         val channel = NotificationChannel(
             CHANNEL_ID,
             getString(R.string.channel_name),
-            NotificationManager.IMPORTANCE_LOW
+            NotificationManager.IMPORTANCE_DEFAULT
         ).apply {
             description = getString(R.string.channel_desc)
+            setSound(null, null)
+            enableVibration(false)
         }
         manager.createNotificationChannel(channel)
     }
@@ -399,5 +409,9 @@ class TrackingService : Service() {
         const val EXTRA_CREW_STATUS = "crewStatus"
         private const val CHANNEL_ID = "rally_tracking"
         private const val NOTIFICATION_ID = 42
+
+        @Volatile
+        var isActive: Boolean = false
+            private set
     }
 }

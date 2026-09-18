@@ -223,7 +223,13 @@ input {
   font-size: 2.4rem;
   letter-spacing: 0.18em;
 }
-.lamp small { color: var(--muted); }
+.lamp small {
+  color: var(--muted);
+  display: block;
+  max-width: 34em;
+  margin: 6px auto 0;
+  white-space: normal;
+}
 .lamp-idle { background: #16170f; }
 .lamp-live {
   background: #10200c;
@@ -232,6 +238,24 @@ input {
 .lamp-live span { color: var(--go); }
 .lamp-warn { background: #2a140c; }
 .lamp-warn span { color: var(--orange); }
+
+.bg-track-note {
+  margin: 12px 0 0;
+  padding: 10px 12px;
+  border: 1px solid #5a3a12;
+  background: #2a1c0c;
+  color: var(--amber);
+  font-size: 0.98rem;
+  line-height: 1.35;
+  position: sticky;
+  top: 0;
+  z-index: 2;
+}
+.bg-track-note.ok {
+  border-color: #1d5a2a;
+  background: #10200c;
+  color: var(--go);
+}
 
 .road-section-box {
   display: grid;
@@ -693,21 +717,11 @@ img.kmz-ge-icon,
   width: 18px;
   height: 18px;
   flex-shrink: 0;
-  background: #22c55e;
-  border: 2px solid #14532d;
-  border-radius: 3px;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.45);
+  background: url("/icons/pins/gas.svg?v=gepins2") center / contain no-repeat;
+  border: none;
+  border-radius: 0;
+  box-shadow: none;
   position: relative;
-}
-.kmz-refuel-mark::after {
-  content: "";
-  position: absolute;
-  left: 4px;
-  top: 3px;
-  width: 6px;
-  height: 8px;
-  border: 2px solid #fff;
-  border-radius: 0 0 2px 2px;
 }
 .kmz-list-icon.custom {
   width: 16px;
@@ -717,11 +731,11 @@ img.kmz-ge-icon,
   background: none;
 }
 .kmz-list-icon.refuel {
-  width: 14px;
-  height: 14px;
-  background: #22c55e;
-  border: 2px solid #14532d;
-  border-radius: 3px;
+  width: 16px;
+  height: 16px;
+  background: url("/icons/pins/gas.svg?v=gepins2") center / contain no-repeat;
+  border: none;
+  border-radius: 0;
   box-sizing: border-box;
 }
 .pin-icon-pack {

@@ -13,6 +13,7 @@ const secureNote = document.getElementById("secureNote");
 
 const KEY = "rallyGpsSession";
 const QUEUE_KEY = "rallyGpsQueue";
+const TRACKING_KEY = "rallyGpsTracking";
 const STOPPED_SPEED_MPS = 1.2;
 const STOPPED_ALERT_MS = 20_000;
 const MAX_QUEUE = 2000;
@@ -27,6 +28,8 @@ let lastFix = null;
 let lastPingOkAt = 0;
 let flushing = false;
 let bgKeepalive = null;
+let bgFixesWhileHidden = 0;
+let lastResumeAt = 0;
 let inStage = false;
 let stageName = null;
 let stageId = null;
@@ -44,13 +47,19 @@ if (!window.isSecureContext) {
   secureNote.classList.remove("hidden");
 }
 
+if ("serviceWorker" in navigator) {
+  navigator.serviceWorker.register("/sw.js").catch(() => {});
+}
+
 const saved = localStorage.getItem(KEY);
 if (saved) {
   try {
     session = JSON.parse(saved);
     showTrack();
+    if (trackingWanted()) startTracking();
   } catch {
     localStorage.removeItem(KEY);
+    setTrackingWanted(false);
   }
 }
 
@@ -191,6 +200,7 @@ function renderMode() {
     if (session) trackPanel.classList.remove("hidden");
     updateRoadSectionUi();
   }
+  updateBgNote();
 }
 
 function shouldShowRedFlag() {
@@ -203,6 +213,7 @@ function showRedFlagAlert() {
   trackPanel.classList.add("hidden");
   stagePanel.classList.add("hidden");
   setupPanel.classList.add("hidden");
+  updateBgNote();
 }
 
 function hideRedFlagAlert() {
@@ -214,6 +225,7 @@ function showCrewAlert() {
   trackPanel.classList.add("hidden");
   stagePanel.classList.add("hidden");
   setupPanel.classList.add("hidden");
+  updateBgNote();
 }
 
 function hideCrewAlert() {
@@ -238,24 +250,27 @@ function updateStopWatch(speed) {
 }
 
 async function startTracking() {
+  if (tracking && watchId != null) {
+    await resumeForegroundTracking();
+    return;
+  }
   if (!navigator.geolocation) {
     showError("This phone has no GPS / geolocation support.");
     return;
   }
   errorRead.classList.add("hidden");
   tracking = true;
+  bgFixesWhileHidden = 0;
+  setTrackingWanted(true);
   toggleBtn.textContent = "Stop tracking";
   toggleBtn.className = "btn btn-stop";
-  setLamp("lamp-live", "TRACKING", "GPS stays on if you switch apps. Keep this tab open; lock-screen tracking needs the Android app.");
+  setLiveLamp();
   updateRoadSectionUi();
+  updateBgNote();
   await requestWakeLock();
-
-  watchId = navigator.geolocation.watchPosition(onFix, onGeoError, {
-    enableHighAccuracy: true,
-    maximumAge: 1000,
-    timeout: 15000,
-  });
+  ensureGeoWatch();
   startBackgroundKeepalive();
+  await requestTrackingNotification();
   flushQueue();
 }
 
@@ -264,6 +279,8 @@ async function stopTracking() {
   inStage = false;
   sectionType = null;
   sectionLabel = null;
+  bgFixesWhileHidden = 0;
+  setTrackingWanted(false);
   hideCrewAlert();
   hideRedFlagAlert();
   if (watchId != null) {
@@ -272,9 +289,11 @@ async function stopTracking() {
   }
   stopBackgroundKeepalive();
   releaseWakeLock();
+  clearTrackingNotification();
   toggleBtn.textContent = "Start tracking";
   toggleBtn.className = "btn btn-start";
   setLamp("lamp-idle", "STOPPED", "Tracking is off. Tap start when you are ready.");
+  updateBgNote();
   renderMode();
   if (session) {
     try {
@@ -336,7 +355,37 @@ async function pollReconnect() {
 
 setInterval(pollReconnect, 4000);
 
+function ensureGeoWatch() {
+  if (!tracking || !navigator.geolocation) return;
+  if (watchId != null) {
+    navigator.geolocation.clearWatch(watchId);
+    watchId = null;
+  }
+  watchId = navigator.geolocation.watchPosition(onFix, onGeoError, {
+    enableHighAccuracy: true,
+    maximumAge: 1000,
+    timeout: 15000,
+  });
+}
+
+async function resumeForegroundTracking() {
+  if (!tracking) return;
+  const now = Date.now();
+  if (now - lastResumeAt < 800) {
+    await requestWakeLock();
+    return;
+  }
+  lastResumeAt = now;
+  await requestWakeLock();
+  ensureGeoWatch();
+  requestFreshFix();
+  flushQueue();
+  setLiveLamp();
+  updateBgNote();
+}
+
 async function onFix(pos) {
+  if (document.hidden) bgFixesWhileHidden += 1;
   lastFix = pos;
   const { latitude: lat, longitude: lon, heading, speed, accuracy } = pos.coords;
   const speedText =
@@ -352,7 +401,10 @@ async function onFix(pos) {
 
   enqueueFix(pos);
   const result = await flushQueue();
-  if (result?.busy) return;
+  if (result?.busy) {
+    updateBgNote();
+    return;
+  }
   if (result?.data) {
     applyPingResult(result.data, speed);
     return;
@@ -364,17 +416,12 @@ async function onFix(pos) {
       "GPS is saved on this phone. Race control will get the route when GSM returns."
     );
   }
+  updateBgNote();
 }
 
 function applyPingResult(data, speed) {
   lastPingOkAt = Date.now();
-  setLamp(
-    "lamp-live",
-    document.hidden ? "TRACKING · BACKGROUND" : "TRACKING",
-    document.hidden
-      ? "GPS is still sending with this tab in the background"
-      : "GPS stays on if you switch apps. Keep this tab open; lock-screen tracking needs the Android app."
-  );
+  setLiveLamp();
   const wasInStage = inStage;
   sectionType = data.section?.type || null;
   sectionLabel = data.section?.label || data.section?.name || null;
@@ -515,9 +562,18 @@ function onGeoError(err) {
 
 async function requestWakeLock() {
   try {
-    if ("wakeLock" in navigator) wakeLock = await navigator.wakeLock.request("screen");
+    if (!("wakeLock" in navigator)) return;
+    if (document.visibilityState !== "visible") return;
+    const next = await navigator.wakeLock.request("screen");
+    wakeLock = next;
+    next.addEventListener("release", () => {
+      if (wakeLock === next) wakeLock = null;
+      if (tracking && document.visibilityState === "visible") {
+        requestWakeLock();
+      }
+    });
   } catch {
-    /* older phones */
+    wakeLock = null;
   }
 }
 
@@ -525,6 +581,138 @@ function releaseWakeLock() {
   if (wakeLock) {
     wakeLock.release().catch(() => {});
     wakeLock = null;
+  }
+}
+
+function trackingPlatform() {
+  const ua = navigator.userAgent || "";
+  const iOS =
+    /iPad|iPhone|iPod/.test(ua) ||
+    (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+  const android = /Android/i.test(ua);
+  return { iOS, android };
+}
+
+function trackingWanted() {
+  try {
+    return localStorage.getItem(TRACKING_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
+function setTrackingWanted(on) {
+  try {
+    if (on) localStorage.setItem(TRACKING_KEY, "1");
+    else localStorage.removeItem(TRACKING_KEY);
+  } catch {
+    /* private mode */
+  }
+}
+
+function liveHint() {
+  const { iOS, android } = trackingPlatform();
+  if (document.hidden) {
+    if (iOS) {
+      return "iPhone usually pauses GPS here. Unlock the phone and keep Rally GPS on screen.";
+    }
+    if (bgFixesWhileHidden > 0) {
+      return "GPS is still sending with this tab in the background.";
+    }
+    return "Trying to keep GPS alive. If the map stops, unlock the phone or use the Android app.";
+  }
+  if (iOS) {
+    return "Keep this screen on. iPhone cannot track with the screen locked or after switching apps.";
+  }
+  if (android) {
+    return "Keep this screen on, or tracking may pause. For lock-screen GPS, use the Rally GPS Android app.";
+  }
+  return "Keep this tab open. GPS may pause if you lock the screen or switch away.";
+}
+
+function setLiveLamp() {
+  if (!tracking) return;
+  setLamp(
+    "lamp-live",
+    document.hidden ? "TRACKING · BACKGROUND" : "TRACKING",
+    liveHint()
+  );
+}
+
+function bgNoteText() {
+  const { iOS, android } = trackingPlatform();
+  if (iOS) {
+    return "Keep this screen on. iPhone Safari cannot do true background GPS.";
+  }
+  if (document.hidden && bgFixesWhileHidden > 0) {
+    return "Background tracking is on. GPS is still sending.";
+  }
+  if (android) {
+    return "Keep this screen on, or tracking may pause on some phones. Lock-screen GPS needs the Rally GPS Android app.";
+  }
+  return "Keep this screen on, or tracking may pause on some phones.";
+}
+
+function updateBgNote() {
+  const el = document.getElementById("bgTrackNote");
+  if (!el) return;
+  const alertsUp =
+    !crewAlert.classList.contains("hidden") || !redFlagAlert.classList.contains("hidden");
+  if (!tracking || !session || alertsUp || !setupPanel.classList.contains("hidden")) {
+    el.classList.add("hidden");
+    el.classList.remove("ok");
+    return;
+  }
+  const { iOS } = trackingPlatform();
+  el.classList.remove("hidden");
+  el.classList.toggle("ok", !iOS && document.hidden && bgFixesWhileHidden > 0);
+  el.textContent = bgNoteText();
+}
+
+function trackingNotificationBody() {
+  const { iOS, android } = trackingPlatform();
+  if (iOS) return "Keep this screen on. iPhone cannot track with the screen locked.";
+  if (android) return "Keep Rally GPS open. Lock-screen GPS needs the Android app.";
+  return "Keep this tab open so GPS can continue.";
+}
+
+async function requestTrackingNotification() {
+  try {
+    if (!("Notification" in window)) return;
+    if (Notification.permission === "default") {
+      await Notification.requestPermission();
+    }
+    if (Notification.permission !== "granted") return;
+    const ready = navigator.serviceWorker?.ready;
+    const reg = ready ? await ready.catch(() => null) : null;
+    if (reg?.showNotification) {
+      await reg.showNotification("Rally GPS tracking", {
+        body: trackingNotificationBody(),
+        tag: "rally-tracking",
+        silent: true,
+        requireInteraction: true,
+        icon: "/icons/icon.svg",
+      });
+      return;
+    }
+    navigator.serviceWorker?.controller?.postMessage({
+      type: "tracking-on",
+      body: trackingNotificationBody(),
+    });
+  } catch {
+    /* notifications are a reminder only */
+  }
+}
+
+function clearTrackingNotification() {
+  try {
+    navigator.serviceWorker?.controller?.postMessage({ type: "tracking-off" });
+    navigator.serviceWorker?.ready
+      .then((reg) => reg.getNotifications?.({ tag: "rally-tracking" }))
+      .then((notes) => notes?.forEach((note) => note.close()))
+      .catch(() => {});
+  } catch {
+    /* ignore */
   }
 }
 
@@ -567,19 +755,35 @@ async function pollStageFlag() {
 setInterval(pollStageFlag, 2000);
 
 document.addEventListener("visibilitychange", async () => {
-  if (!tracking) return;
-  if (document.visibilityState === "visible") {
-    await requestWakeLock();
-    requestFreshFix();
-    flushQueue();
+  if (!tracking && trackingWanted() && session) {
+    await startTracking();
     return;
   }
-  setLamp(
-    "lamp-live",
-    "TRACKING · BACKGROUND",
-    "GPS is still sending with this tab in the background"
-  );
+  if (!tracking) return;
+  // Do not clearWatch or stop GPS just because the document is hidden.
+  if (document.visibilityState === "visible") {
+    await resumeForegroundTracking();
+    return;
+  }
+  setLiveLamp();
+  updateBgNote();
   requestFreshFix();
+  flushQueue();
+});
+
+window.addEventListener("pageshow", () => {
+  if (!session) return;
+  if (trackingWanted() && !tracking) startTracking();
+  else if (tracking) resumeForegroundTracking();
+});
+
+window.addEventListener("focus", () => {
+  if (tracking) resumeForegroundTracking();
+});
+
+document.addEventListener("resume", () => {
+  if (trackingWanted() && !tracking && session) startTracking();
+  else if (tracking) resumeForegroundTracking();
 });
 
 window.addEventListener("online", () => {

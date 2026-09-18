@@ -152,7 +152,12 @@ class MainActivity : AppCompatActivity() {
 
         binding.serverUrl.setText(SessionStore.loadServerUrl(this))
         session = SessionStore.load(this)
-        if (session != null) showTrackPanel() else showSetupPanel()
+        if (session != null) {
+            tracking = SessionStore.trackingWanted(this) || TrackingService.isActive
+            showTrackPanel()
+        } else {
+            showSetupPanel()
+        }
 
         binding.continueBtn.setOnClickListener { joinRally() }
         binding.toggleBtn.setOnClickListener {
@@ -197,6 +202,11 @@ class MainActivity : AppCompatActivity() {
             filter,
             ContextCompat.RECEIVER_NOT_EXPORTED
         )
+    }
+
+    override fun onResume() {
+        super.onResume()
+        restoreTrackingIfNeeded()
     }
 
     override fun onStop() {
@@ -384,6 +394,23 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    private fun restoreTrackingIfNeeded() {
+        val wanted = SessionStore.trackingWanted(this) || TrackingService.isActive
+        if (session == null || !wanted) return
+        tracking = true
+        renderMode()
+        if (hasFineLocation()) {
+            startTrackingService(promptBattery = false)
+        }
+    }
+
+    private fun hasFineLocation(): Boolean {
+        return ContextCompat.checkSelfPermission(
+            this,
+            Manifest.permission.ACCESS_FINE_LOCATION
+        ) == PackageManager.PERMISSION_GRANTED
+    }
+
     private fun ensurePermissionsAndStart() {
         val needed = mutableListOf(
             Manifest.permission.ACCESS_FINE_LOCATION,
@@ -431,12 +458,13 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun startTrackingService() {
+    private fun startTrackingService(promptBattery: Boolean = true) {
         if (session == null) {
             showError("Join the rally first.")
             return
         }
-        askUnrestrictedBattery()
+        SessionStore.setTrackingWanted(this, true)
+        if (promptBattery) askUnrestrictedBattery()
         val intent = Intent(this, TrackingService::class.java)
         ContextCompat.startForegroundService(this, intent)
         tracking = true
@@ -444,6 +472,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun stopTrackingService() {
+        SessionStore.setTrackingWanted(this, false)
         val intent = Intent(this, TrackingService::class.java).setAction(TrackingService.ACTION_STOP)
         startService(intent)
         tracking = false

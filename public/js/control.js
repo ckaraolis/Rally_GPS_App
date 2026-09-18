@@ -58,14 +58,15 @@ const PIN_ICON_SLOTS = [
   { kind: "stop", label: "Stop" },
   { kind: "refuel", label: "Refueling" },
 ];
+const PIN_IMAGE_VER = "gepins2";
 const DEFAULT_PIN_IMAGES = {
-  tc: "/icons/pins/red-circle.svg",
-  start: "/icons/pins/flag.svg",
-  finish: "/icons/pins/flag.svg",
-  stop: "/icons/pins/flag.svg",
-  flag: "/icons/pins/flag.svg",
-  refuel: "/icons/pins/gas.svg",
-  pin: "/icons/pins/yellow-pin.svg",
+  tc: `/icons/pins/red-circle.svg?v=${PIN_IMAGE_VER}`,
+  start: `/icons/pins/flag.svg?v=${PIN_IMAGE_VER}`,
+  finish: `/icons/pins/flag.svg?v=${PIN_IMAGE_VER}`,
+  stop: `/icons/pins/flag.svg?v=${PIN_IMAGE_VER}`,
+  flag: `/icons/pins/flag.svg?v=${PIN_IMAGE_VER}`,
+  refuel: `/icons/pins/gas.svg?v=${PIN_IMAGE_VER}`,
+  pin: `/icons/pins/yellow-pin.svg?v=${PIN_IMAGE_VER}`,
 };
 let pinIcons = {};
 let pinIconsRallyId = null;
@@ -609,12 +610,23 @@ function isKmzPin(section) {
   );
 }
 
+function looksLikeRefuel(name, iconHref) {
+  const n = String(name || "")
+    .toLowerCase()
+    .replace(/[_/]+/g, " ");
+  const href = String(iconHref || "").toLowerCase();
+  if (/gas_stations|gasoline|petrol|shapes\/gas|\bfuel/.test(href)) return true;
+  if (/refuell?ing|re\s*fuel|refuel/.test(n)) return true;
+  if (/\b(?:rz|rf)\s*[-.]?\s*\d*\b/.test(n)) return true;
+  if (/\b(?:fuel(?:ing|ling)?|petrol|gas(?:oline)?(?:\s*stations?)?)\b/.test(n)) return true;
+  if (/\bservice\s*(park|area|zone)\b/.test(n)) return true;
+  return false;
+}
+
 function classifyPinKind(name, iconHref) {
   const n = String(name || "").toLowerCase();
   const href = String(iconHref || "").toLowerCase();
-  if (/\b(refuel|refuelling|refueling|fuel\s*zone|petrol)\b/.test(n) || /gas_stations|fuel/.test(href)) {
-    return "refuel";
-  }
+  if (looksLikeRefuel(name, iconHref)) return "refuel";
   if (/\bstart\b/.test(n)) return "start";
   if (/\bfinish\b/.test(n)) return "finish";
   if (/\bstop\b/.test(n)) return "stop";
@@ -631,11 +643,12 @@ function classifyPinKind(name, iconHref) {
 }
 
 function pinKind(section) {
-  let kind =
-    section.iconKind ||
-    section.coordinates?.[0]?.iconKind ||
-    classifyPinKind(section.name, section.iconHref || section.coordinates?.[0]?.iconHref);
-  if (kind === "flag") kind = classifyPinKind(section.name, section.iconHref);
+  const href = section.iconHref || section.coordinates?.[0]?.iconHref;
+  const classified = classifyPinKind(section.name, href);
+  // Old uploads stored iconKind as pin/tc/flag because refuel was not a kind yet.
+  if (classified === "refuel") return "refuel";
+  let kind = section.iconKind || section.coordinates?.[0]?.iconKind || classified;
+  if (kind === "flag") kind = classified;
   return kind;
 }
 
@@ -672,11 +685,13 @@ function pinImageSrc(section) {
   const kind = pinKind(section);
   const custom = pinIconSrc(kind);
   if (custom) return custom;
+  const bundled = DEFAULT_PIN_IMAGES[kind];
+  if (bundled && kind !== "pin") return bundled;
   const href = section.iconHref || section.coordinates?.[0]?.iconHref || "";
   const safe = safeIconSrc(href);
   if (safe.startsWith("data:image/")) return safe;
   if (safe && !isGoogleMapfile(safe)) return safe;
-  return DEFAULT_PIN_IMAGES[kind] || DEFAULT_PIN_IMAGES.pin;
+  return bundled || DEFAULT_PIN_IMAGES.pin;
 }
 
 function listIconHtml(section) {
