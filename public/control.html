@@ -15,10 +15,40 @@
   <aside class="control-side">
     <header>
       <a class="back" href="/">Rally GPS</a>
+      <button id="logoutBtn" type="button" class="back logout-btn">Sign out</button>
       <h1>Race control</h1>
       <p class="lede tight">Follow every car here, then open the same feed in Google Earth Pro.</p>
     </header>
 
+    <div class="earth-box">
+      <p class="eyebrow">Rallies</p>
+      <p class="hint">Create a rally. Only a <strong>LIVE</strong> rally shows cars on the map. Ending a live rally keeps it in history.</p>
+      <form id="rallyForm" class="rally-form">
+        <label>
+          Rally name
+          <input id="rallyName" name="name" maxlength="80" placeholder="Cyprus Rally" required />
+        </label>
+        <div class="rally-dates">
+          <label>
+            Start date
+            <input id="rallyStart" name="startDate" type="date" />
+          </label>
+          <label>
+            End date
+            <input id="rallyEnd" name="endDate" type="date" />
+          </label>
+        </div>
+        <label class="rally-live-check">
+          <input id="rallyStartLive" type="checkbox" />
+          Start live now
+        </label>
+        <button type="submit" class="btn btn-amber">Create rally</button>
+      </form>
+      <p id="rallyStatus" class="hint"></p>
+      <ul id="rallyList" class="car-list">
+        <li class="empty">No rallies yet</li>
+      </ul>
+    </div>
     <div class="earth-box">
       <p class="eyebrow">Google Earth</p>
       <a class="btn btn-amber" href="/earth-link.kml">Open in Google Earth</a>
@@ -42,8 +72,10 @@
 
     <section>
       <p class="eyebrow">Cars on course</p>
+      <p id="mapModeHint" class="hint">Cars appear on the map only while a rally is LIVE.</p>
       <button id="refreshLostBtn" type="button" class="btn btn-ghost">Refresh lost cars</button>
-      <p class="hint">Refresh is always available while a car is tracking. No GSM: the phone saves GPS and the route appears when signal returns. Refresh cannot invent a new position.</p>
+      <button id="clearCarsBtn" type="button" class="btn btn-ghost">Clear rally cars</button>
+      <p class="hint">Green = moving, blue = stopped, red = SOS. Refresh holds last GPS. No GSM: the phone saves GPS and the route appears when signal returns.</p>
       <ul id="carList" class="car-list">
         <li class="empty">Waiting for drivers to start tracking…</li>
       </ul>
@@ -51,6 +83,6 @@
   </aside>
   <div id="map" class="control-map"></div>
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-  <script src="/js/control.js?v=offline-bg1"></script>
+  <script src="/js/control.js?v=auth1"></script>
 </body>
 </html>

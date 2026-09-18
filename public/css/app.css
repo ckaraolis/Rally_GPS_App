@@ -152,6 +152,14 @@ code { font-family: var(--mono); font-size: 0.9em; }
   text-transform: uppercase;
   font-size: 0.9rem;
 }
+.logout-btn {
+  display: inline;
+  margin-left: 12px;
+  padding: 0;
+  border: 0;
+  background: none;
+  cursor: pointer;
+}
 
 .driver-shell, .control-side {
   padding: 24px;
@@ -464,18 +472,53 @@ input {
 
 
 
+.rally-form { display: grid; gap: 10px; }
+.rally-dates {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+.rally-live-check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  font-size: 0.9rem;
+}
+.rally-live-check input {
+  width: auto;
+  accent-color: var(--go);
+}
+.rally-badge {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  font-size: 0.7rem;
+  letter-spacing: 0.08em;
+}
+.rally-badge.live { background: #22c55e; color: #111; }
+.rally-badge.draft { background: #3d3f36; color: var(--muted); }
+.rally-badge.ended { background: #3d7dff; color: #fff; }
+.rally-badge.history { background: var(--amber); color: #111; }
+
 .leaflet-marker-num {
   font-family: var(--font);
   font-weight: 800;
   color: #111;
-  background: var(--amber);
+  background: #22c55e;
   border: 2px solid #111;
-  min-width: 34px;
-  height: 28px;
+  width: 36px;
+  min-width: 36px;
+  height: 36px;
+  border-radius: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 16px;
+  font-size: 14px;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.45);
 }
 
 @media (max-width: 860px) {

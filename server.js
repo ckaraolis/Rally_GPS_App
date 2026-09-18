@@ -2,7 +2,8 @@ const crypto = require("crypto");
 const os = require("os");
 const path = require("path");
 const express = require("express");
-const { getStore, hasSupabase, pickColor, newToken, PALETTE } = require("./lib/store");
+const { getStore, hasSupabase, pickColor, newToken, PALETTE, rallySummary } = require("./lib/store");
+const auth = require("./lib/auth");
 const { parseKmzOrKml, buildLabel } = require("./lib/kml");
 const { detectSection, haversineMeters } = require("./lib/geo");
 
@@ -22,6 +23,117 @@ app.use("/js", (_req, res, next) => {
   res.set("Cache-Control", "no-store");
   next();
 });
+
+let memoryControlUser = null;
+
+async function loadControlUser(username) {
+  try {
+    const stored = await store.getControlUser(username);
+    if (stored) return stored;
+  } catch (err) {
+    console.error("control user store", err.message);
+  }
+  if (memoryControlUser && memoryControlUser.username === username) return memoryControlUser;
+  return null;
+}
+
+async function saveControlUser(user) {
+  memoryControlUser = user;
+  try {
+    await store.saveControlUser(user);
+  } catch (err) {
+    console.error("control user save", err.message);
+  }
+  return user;
+}
+
+async function ensureControlUser() {
+  const existing = await loadControlUser(auth.DEFAULT_USERNAME);
+  if (existing) return existing;
+  const { salt, hash } = auth.hashPassword(auth.DEFAULT_PASSWORD);
+  const user = {
+    username: auth.DEFAULT_USERNAME,
+    salt,
+    hash,
+    mustChangePassword: true,
+  };
+  await saveControlUser(user);
+  return user;
+}
+
+function sendSession(res, req, user) {
+  const token = auth.makeToken(user);
+  res.setHeader("Set-Cookie", auth.cookieHeader(token, req));
+  return token;
+}
+
+app.post(
+  "/api/login",
+  asyncHandler(async (req, res) => {
+    const username = String(req.body.username || "").trim();
+    const password = String(req.body.password || "");
+    await ensureControlUser();
+    const user = await loadControlUser(username);
+    if (!user || !auth.verifyPassword(password, user.salt, user.hash)) {
+      return res.status(401).json({ error: "Wrong username or password." });
+    }
+    const token = sendSession(res, req, user);
+    res.json({
+      ok: true,
+      username: user.username,
+      mustChangePassword: Boolean(user.mustChangePassword),
+      earthToken: token,
+    });
+  })
+);
+
+app.post("/api/logout", (req, res) => {
+  res.setHeader("Set-Cookie", auth.clearCookieHeader(req));
+  res.json({ ok: true });
+});
+
+app.get("/api/me", (req, res) => {
+  const session = auth.sessionFromRequest(req);
+  if (!session) return res.status(401).json({ error: "Sign in to race control." });
+  res.json({
+    ok: true,
+    username: session.username,
+    mustChangePassword: session.mustChangePassword,
+    earthToken: session.token,
+  });
+});
+
+app.post(
+  "/api/password",
+  asyncHandler(async (req, res) => {
+    const session = auth.sessionFromRequest(req);
+    if (!session) return res.status(401).json({ error: "Sign in to race control." });
+    const currentPassword = String(req.body.currentPassword || "");
+    const newPassword = String(req.body.newPassword || "");
+    const user = await loadControlUser(session.username);
+    if (!user || !auth.verifyPassword(currentPassword, user.salt, user.hash)) {
+      return res.status(401).json({ error: "Current password is wrong." });
+    }
+    if (newPassword.length < 8) {
+      return res.status(400).json({ error: "New password must be at least 8 characters." });
+    }
+    if (newPassword === currentPassword) {
+      return res.status(400).json({ error: "Choose a different password." });
+    }
+    if (newPassword === auth.DEFAULT_PASSWORD) {
+      return res.status(400).json({ error: "Do not keep the default password." });
+    }
+    const { salt, hash } = auth.hashPassword(newPassword);
+    user.salt = salt;
+    user.hash = hash;
+    user.mustChangePassword = false;
+    await saveControlUser(user);
+    const token = sendSession(res, req, user);
+    res.json({ ok: true, username: user.username, mustChangePassword: false, earthToken: token });
+  })
+);
+
+app.use(auth.protectControl);
 app.use(express.static(path.join(__dirname, "public")));
 
 function publicBase(req) {
@@ -51,6 +163,24 @@ function isLive(car) {
   return Date.now() - car.last.ts < STALE_MS;
 }
 
+const STOPPED_SPEED_MPS = 1.2;
+const MOTION_COLORS = {
+  sos: "#ff1a1a",
+  moving: "#22c55e",
+  stopped: "#3d7dff",
+};
+
+function carMotion(car) {
+  if (car.crewStatus?.status === "sos") return "sos";
+  const speed = Number(car.last?.speed);
+  if (Number.isFinite(speed) && speed > STOPPED_SPEED_MPS) return "moving";
+  return "stopped";
+}
+
+function motionColor(motion) {
+  return MOTION_COLORS[motion] || MOTION_COLORS.stopped;
+}
+
 function reviveLastFix(car) {
   car.reconnectRequested = Date.now();
   car.tracking = true;
@@ -74,11 +204,12 @@ function hasAckedFlag(car, section) {
 }
 
 function serializeCar(car, { includeTrail = false } = {}) {
+  const motion = carMotion(car);
   return {
     id: car.id,
     carNumber: car.carNumber,
     driverName: car.driverName,
-    color: car.color,
+    color: motionColor(motion),
     tracking: car.tracking,
     live: isLive(car),
     last: car.last,
@@ -87,9 +218,45 @@ function serializeCar(car, { includeTrail = false } = {}) {
     flagStatus: sectionFlag(car.section).flagStatus,
     flagAcked: hasAckedFlag(car, car.section),
     reconnectRequested: Boolean(car.reconnectRequested),
+    motion,
     trailCount: Array.isArray(car.trail) ? car.trail.length : 0,
     ...(includeTrail ? { trail: car.trail || [] } : {}),
   };
+}
+
+function parseDate(value) {
+  const text = String(value || "").trim();
+  if (!text) return null;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(text)) return null;
+  return text;
+}
+
+function parseRallyStatus(value, fallback = "draft") {
+  const status = String(value || "").toLowerCase();
+  if (status === "live" || status === "ended" || status === "draft") return status;
+  return fallback;
+}
+
+async function snapshotRally(rally) {
+  const cars = await store.listCars();
+  rally.status = "ended";
+  rally.snapshot = cars.map((car) => serializeCar(car, { includeTrail: true }));
+  rally.carCount = cars.length;
+  rally.updatedAt = new Date().toISOString();
+  return store.saveRally(rally);
+}
+
+async function setRallyLive(rally) {
+  const rallies = await store.listRallies();
+  for (const other of rallies) {
+    if (other.id !== rally.id && other.status === "live") {
+      const full = (await store.getRally(other.id)) || other;
+      await snapshotRally(full);
+    }
+  }
+  rally.status = "live";
+  rally.updatedAt = new Date().toISOString();
+  return store.saveRally(rally);
 }
 
 function validCoord(lat, lon) {
@@ -349,10 +516,115 @@ app.get(
   "/api/cars",
   asyncHandler(async (_req, res) => {
     const cars = await store.listCars();
+    let liveRally = null;
+    let ralliesReady = true;
+    let rallyCount = 0;
+    try {
+      const rallies = await store.listRallies();
+      rallyCount = rallies.length;
+      liveRally = rallies.find((r) => r.status === "live") || null;
+    } catch (err) {
+      ralliesReady = false;
+      console.error("rally_events unavailable", err.message);
+    }
+    const mapOpen = Boolean(liveRally) || !ralliesReady || rallyCount === 0;
     res.json({
       serverTime: Date.now(),
+      ralliesReady,
+      mapOpen,
+      liveRally: rallySummary(liveRally),
       cars: cars.map((car) => serializeCar(car)),
     });
+  })
+);
+
+app.delete(
+  "/api/cars",
+  asyncHandler(async (_req, res) => {
+    const count = await store.clearCars();
+    res.json({ ok: true, count });
+  })
+);
+
+app.get(
+  "/api/rallies",
+  asyncHandler(async (_req, res) => {
+    const rallies = await store.listRallies();
+    res.json({
+      liveRally: rallySummary(rallies.find((r) => r.status === "live") || null),
+      rallies: rallies.map(rallySummary),
+    });
+  })
+);
+
+app.post(
+  "/api/rallies",
+  asyncHandler(async (req, res) => {
+    const name = String(req.body.name || "").trim().slice(0, 80);
+    if (!name) return res.status(400).json({ error: "Rally name is required." });
+    const rally = {
+      id: crypto.randomUUID(),
+      name,
+      startDate: parseDate(req.body.startDate),
+      endDate: parseDate(req.body.endDate),
+      status: "draft",
+      snapshot: null,
+      carCount: 0,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+    if (parseRallyStatus(req.body.status, "draft") === "live") {
+      await setRallyLive(rally);
+    } else {
+      await store.saveRally(rally);
+    }
+    res.json({ rally: rallySummary(rally) });
+  })
+);
+
+app.get(
+  "/api/rallies/:id",
+  asyncHandler(async (req, res) => {
+    const rally = await store.getRally(req.params.id);
+    if (!rally) return res.status(404).json({ error: "Rally not found." });
+    res.json({ rally });
+  })
+);
+
+app.patch(
+  "/api/rallies/:id",
+  asyncHandler(async (req, res) => {
+    const rally = await store.getRally(req.params.id);
+    if (!rally) return res.status(404).json({ error: "Rally not found." });
+    if (req.body.name != null) {
+      const name = String(req.body.name || "").trim().slice(0, 80);
+      if (!name) return res.status(400).json({ error: "Rally name is required." });
+      rally.name = name;
+    }
+    if (req.body.startDate !== undefined) rally.startDate = parseDate(req.body.startDate);
+    if (req.body.endDate !== undefined) rally.endDate = parseDate(req.body.endDate);
+    const nextStatus = req.body.status != null ? parseRallyStatus(req.body.status, rally.status) : rally.status;
+    rally.updatedAt = new Date().toISOString();
+    if (nextStatus === "live" && rally.status !== "live") {
+      await setRallyLive(rally);
+    } else if (nextStatus === "ended" && rally.status === "live") {
+      await snapshotRally(rally);
+    } else {
+      rally.status = nextStatus;
+      await store.saveRally(rally);
+    }
+    const saved = await store.getRally(rally.id);
+    res.json({ rally: rallySummary(saved || rally) });
+  })
+);
+
+app.delete(
+  "/api/rallies/:id",
+  asyncHandler(async (req, res) => {
+    const rally = await store.getRally(req.params.id);
+    if (!rally) return res.status(404).json({ error: "Rally not found." });
+    await store.deleteRally(req.params.id);
+    res.json({ ok: true });
   })
 );
 
@@ -577,7 +849,9 @@ app.delete(
 );
 
 app.get("/earth-link.kml", (req, res) => {
-  const href = `${publicBase(req)}/earth.kml`;
+  const session = auth.sessionFromRequest(req);
+  const token = session?.token ? `?t=${encodeURIComponent(session.token)}` : "";
+  const href = `${publicBase(req)}/earth.kml${token}`;
   res.set({
     "Content-Type": "application/vnd.google-earth.kml+xml; charset=utf-8",
     "Content-Disposition": 'attachment; filename="Rally_Live_Tracking.kml"',
@@ -605,11 +879,18 @@ app.get(
   "/earth.kml",
   asyncHandler(async (_req, res) => {
     const [cars, sections] = await Promise.all([store.listCars(), store.listSections()]);
+    let mapOpen = true;
+    try {
+      const rallies = await store.listRallies();
+      mapOpen = rallies.some((r) => r.status === "live") || rallies.length === 0;
+    } catch {
+      mapOpen = true;
+    }
     res.set({
       "Content-Type": "application/vnd.google-earth.kml+xml; charset=utf-8",
       "Cache-Control": "no-store",
     });
-    res.send(buildLiveKml(cars, sections));
+    res.send(buildLiveKml(mapOpen ? cars : [], sections));
   })
 );
 
@@ -658,7 +939,7 @@ function buildLiveKml(cars, sections = []) {
         <description><![CDATA[${status}<br/>Speed: ${speedKmh}<br/>Updated: ${ageSec}s ago${sectionLabel}]]></description>
         <Style>
           <IconStyle>
-            <color>${kmlColor(car.color)}</color>
+            <color>${kmlColor(motionColor(carMotion(car)))}</color>
             <scale>1.3</scale>
             ${headingTag}
             <Icon><href>http://maps.google.com/mapfiles/kml/shapes/track.png</href></Icon>

@@ -11,6 +11,30 @@ const visibleTrails = new Set();
 let fittedOnce = false;
 let fittedRouteOnce = false;
 let latestCars = [];
+let liveRally = null;
+let ralliesReady = true;
+let viewingRallyId = null;
+let historyCars = [];
+let earthToken = "";
+
+const STOPPED_SPEED_MPS = 1.2;
+const MOTION_COLORS = {
+  sos: "#ff1a1a",
+  moving: "#22c55e",
+  stopped: "#3d7dff",
+};
+
+function carMotion(car) {
+  if (car.motion === "sos" || car.motion === "moving" || car.motion === "stopped") return car.motion;
+  if (car.crewStatus?.status === "sos") return "sos";
+  const speed = Number(car.last?.speed);
+  if (Number.isFinite(speed) && speed > STOPPED_SPEED_MPS) return "moving";
+  return "stopped";
+}
+
+function markerColor(car) {
+  return MOTION_COLORS[carMotion(car)] || MOTION_COLORS.stopped;
+}
 
 const copyBtn = document.getElementById("copyLink");
 const routeFile = document.getElementById("routeFile");
@@ -18,9 +42,13 @@ const clearRoutes = document.getElementById("clearRoutes");
 const routeStatus = document.getElementById("routeStatus");
 const sectionList = document.getElementById("sectionList");
 const refreshLostBtn = document.getElementById("refreshLostBtn");
+const clearCarsBtn = document.getElementById("clearCarsBtn");
+const rallyForm = document.getElementById("rallyForm");
+const rallyStatus = document.getElementById("rallyStatus");
+const mapModeHint = document.getElementById("mapModeHint");
 
 copyBtn.addEventListener("click", async () => {
-  const url = `${location.origin}/earth.kml`;
+  const url = `${location.origin}/earth.kml${earthToken ? `?t=${encodeURIComponent(earthToken)}` : ""}`;
   try {
     await navigator.clipboard.writeText(url);
     copyBtn.textContent = "Copied";
@@ -65,6 +93,188 @@ clearRoutes.addEventListener("click", async () => {
   await refreshSections();
 });
 
+clearCarsBtn.addEventListener("click", async () => {
+  if (!confirm("Clear all rally cars from the live list? This cannot be undone.")) return;
+  clearCarsBtn.disabled = true;
+  try {
+    const res = await fetch("/api/cars", { method: "DELETE" });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || "Could not clear cars");
+    for (const id of [...markers.keys()]) {
+      map.removeLayer(markers.get(id));
+      markers.delete(id);
+    }
+    for (const id of [...visibleTrails]) hideCarTrail(id);
+    await refresh();
+  } catch (err) {
+    alert(err.message || "Could not clear cars");
+  }
+  clearCarsBtn.disabled = false;
+});
+
+rallyForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const name = document.getElementById("rallyName").value.trim();
+  const startDate = document.getElementById("rallyStart").value;
+  const endDate = document.getElementById("rallyEnd").value;
+  const startLive = document.getElementById("rallyStartLive").checked;
+  rallyStatus.textContent = "Saving…";
+  try {
+    const res = await fetch("/api/rallies", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name,
+        startDate,
+        endDate,
+        status: startLive ? "live" : "draft",
+      }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || "Could not create rally");
+    rallyForm.reset();
+    rallyStatus.textContent = startLive ? "Rally is LIVE. Cars will show on the map." : "Rally saved.";
+    viewingRallyId = null;
+    historyCars = [];
+    await refreshRallies();
+    await refresh();
+  } catch (err) {
+    rallyStatus.textContent = err.message || "Could not create rally";
+  }
+});
+
+async function setRallyStatus(id, status) {
+  const res = await fetch(`/api/rallies/${encodeURIComponent(id)}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ status }),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || "Could not update rally");
+  return data.rally;
+}
+
+async function viewRallyHistory(id) {
+  const res = await fetch(`/api/rallies/${encodeURIComponent(id)}`);
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || "Could not load rally");
+  viewingRallyId = id;
+  historyCars = Array.isArray(data.rally?.snapshot) ? data.rally.snapshot : [];
+  mapModeHint.textContent = `History: ${data.rally?.name || "rally"} — map shows saved cars from this event.`;
+  renderList(historyCars, { history: true });
+  renderMap(historyCars);
+}
+
+async function refreshRallies() {
+  try {
+    const res = await fetch("/api/rallies");
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || "Could not load rallies");
+    ralliesReady = true;
+    renderRallyList(data.rallies || [], data.liveRally || null);
+  } catch (err) {
+    ralliesReady = false;
+    document.getElementById("rallyList").innerHTML =
+      `<li class="empty">${escapeHtml(err.message || "Rallies table missing. Run supabase/schema_rallies.sql in Supabase.")}</li>`;
+  }
+}
+
+function rallyDates(rally) {
+  if (rally.startDate && rally.endDate) return `${rally.startDate} → ${rally.endDate}`;
+  if (rally.startDate) return `From ${rally.startDate}`;
+  if (rally.endDate) return `Until ${rally.endDate}`;
+  return "No dates";
+}
+
+function renderRallyList(rallies, live) {
+  const list = document.getElementById("rallyList");
+  if (!rallies.length) {
+    list.innerHTML = '<li class="empty">No rallies yet</li>';
+    return;
+  }
+  list.innerHTML = rallies
+    .map((rally) => {
+      const viewing = viewingRallyId === rally.id;
+      const badge = viewing && rally.status !== "live" ? "history" : rally.status;
+      const badgeLabel = viewing && rally.status !== "live" ? "VIEWING" : rally.status.toUpperCase();
+      const actions =
+        rally.status === "live"
+          ? `<button type="button" class="mini-toggle" data-rally-status="ended" data-id="${rally.id}">End live</button>`
+          : rally.status === "draft"
+            ? `<button type="button" class="mini-toggle" data-rally-status="live" data-id="${rally.id}">Go live</button>
+               <button type="button" class="mini-toggle" data-rally-delete="${rally.id}">Delete</button>`
+            : `<button type="button" class="mini-toggle${viewing ? " active" : ""}" data-rally-view="${rally.id}">${
+                viewing ? "Showing history" : "View history"
+              }</button>
+               <button type="button" class="mini-toggle" data-rally-delete="${rally.id}">Delete</button>`;
+      const backLive =
+        viewing && live
+          ? `<button type="button" class="mini-toggle" data-rally-back="1">Back to live</button>`
+          : viewing
+            ? `<button type="button" class="mini-toggle" data-rally-back="1">Close history</button>`
+            : "";
+      return `<li class="car-row" data-rally="${rally.id}">
+        <span class="dot" style="background:${rally.status === "live" ? "#22c55e" : rally.status === "ended" ? "#3d7dff" : "#9a917f"}"></span>
+        <div>
+          <strong>${escapeHtml(rally.name)} <span class="rally-badge ${badge}">${badgeLabel}</span></strong>
+          <small>${escapeHtml(rallyDates(rally))}${rally.carCount ? ` · ${rally.carCount} cars saved` : ""}</small>
+          <div class="car-actions">${actions}${backLive}</div>
+        </div>
+      </li>`;
+    })
+    .join("");
+
+  for (const btn of list.querySelectorAll("button[data-rally-status]")) {
+    btn.addEventListener("click", async (event) => {
+      event.stopPropagation();
+      try {
+        await setRallyStatus(btn.getAttribute("data-id"), btn.getAttribute("data-rally-status"));
+        viewingRallyId = null;
+        historyCars = [];
+        await refreshRallies();
+        await refresh();
+      } catch (err) {
+        rallyStatus.textContent = err.message;
+      }
+    });
+  }
+  for (const btn of list.querySelectorAll("button[data-rally-view]")) {
+    btn.addEventListener("click", async (event) => {
+      event.stopPropagation();
+      try {
+        await viewRallyHistory(btn.getAttribute("data-rally-view"));
+        await refreshRallies();
+      } catch (err) {
+        rallyStatus.textContent = err.message;
+      }
+    });
+  }
+  for (const btn of list.querySelectorAll("button[data-rally-back]")) {
+    btn.addEventListener("click", async (event) => {
+      event.stopPropagation();
+      viewingRallyId = null;
+      historyCars = [];
+      await refreshRallies();
+      await refresh();
+    });
+  }
+  for (const btn of list.querySelectorAll("button[data-rally-delete]")) {
+    btn.addEventListener("click", async (event) => {
+      event.stopPropagation();
+      if (!confirm("Delete this rally from history?")) return;
+      await fetch(`/api/rallies/${encodeURIComponent(btn.getAttribute("data-rally-delete"))}`, {
+        method: "DELETE",
+      });
+      if (viewingRallyId === btn.getAttribute("data-rally-delete")) {
+        viewingRallyId = null;
+        historyCars = [];
+      }
+      await refreshRallies();
+      await refresh();
+    });
+  }
+}
+
 refreshLostBtn.addEventListener("click", async () => {
   refreshLostBtn.disabled = true;
   refreshLostBtn.textContent = "Refreshing…";
@@ -102,9 +312,29 @@ async function refresh() {
   const res = await fetch("/api/cars");
   const data = await res.json();
   latestCars = data.cars || [];
+  liveRally = data.liveRally || null;
+  if (data.ralliesReady === false) ralliesReady = false;
+  else if (data.ralliesReady === true) ralliesReady = true;
+
+  if (viewingRallyId) {
+    renderList(historyCars, { history: true });
+    renderMap(historyCars);
+    return;
+  }
+
+  const showOnMap = data.mapOpen !== false;
+  if (liveRally) {
+    mapModeHint.textContent = `LIVE: ${liveRally.name} — cars are on the map.`;
+  } else if (!ralliesReady) {
+    mapModeHint.textContent = "Rallies table not ready. Cars still show on the map. Run supabase/schema_rallies.sql.";
+  } else if (showOnMap) {
+    mapModeHint.textContent = "Create a rally and tap Go live to start an official live session.";
+  } else {
+    mapModeHint.textContent = "No LIVE rally. Cars stay in the list but are hidden on the map until you go live.";
+  }
   renderList(latestCars);
-  renderMap(latestCars);
-  await refreshVisibleTrails();
+  renderMap(showOnMap ? latestCars : []);
+  if (showOnMap) await refreshVisibleTrails();
 }
 
 async function refreshSections() {
@@ -125,9 +355,17 @@ function popupHtml(car) {
       : crew === "ok"
         ? `<div style="color:#3ddc84;font-weight:800">GREEN OK</div>`
         : "";
+  const motion = carMotion(car);
+  const motionLine =
+    motion === "sos"
+      ? `<div style="color:#ff1a1a;font-weight:800">SOS</div>`
+      : motion === "moving"
+        ? `<div style="color:#15803d;font-weight:800">MOVING</div>`
+        : `<div style="color:#1d4ed8;font-weight:800">STOPPED</div>`;
   return `<div class="car-popup">
     <strong>#${escapeHtml(car.carNumber)}</strong>
     <div>${escapeHtml(car.driverName)}</div>
+    ${motionLine}
     <div>Speed: ${speed}</div>
     ${section}
     ${crewLine}
@@ -235,7 +473,7 @@ function renderRouteLayers(sections) {
   }
 }
 
-function renderList(cars) {
+function renderList(cars, { history = false } = {}) {
   const list = document.getElementById("carList");
   if (!cars.length) {
     list.innerHTML = '<li class="empty">Waiting for drivers to start tracking…</li>';
@@ -258,27 +496,30 @@ function renderList(cars) {
       const crewLabel =
         crew === "sos" ? "RED SOS" : crew === "ok" ? "GREEN OK" : "";
       const flagLabel = car.flagStatus === "red" ? " · RED FLAG" : "";
-      const hasTrail = (car.trailCount || 0) > 1;
+      const color = markerColor(car);
+      const motionLabel =
+        carMotion(car) === "sos" ? "SOS" : carMotion(car) === "moving" ? "MOVING" : "STOPPED";
+      const hasTrail = (car.trailCount || 0) > 1 || (Array.isArray(car.trail) && car.trail.length > 1);
       const showing = visibleTrails.has(car.id);
       return `<li class="car-row" data-id="${car.id}">
-        <span class="dot" style="background:${car.color}"></span>
+        <span class="dot" style="background:${color}"></span>
         <div>
           <strong>#${escapeHtml(car.carNumber)} ${escapeHtml(car.driverName)}</strong>
-          <small>${state} · ${speed}${crewLabel ? ` · ${crewLabel}` : ""}${flagLabel}</small>
+          <small>${state} · ${motionLabel} · ${speed}${crewLabel ? ` · ${crewLabel}` : ""}${flagLabel}</small>
           <small class="section-line">${escapeHtml(section)}</small>
           <div class="car-actions">
             <button type="button" class="mini-toggle${showing ? " active" : ""}" data-route="${car.id}" ${
               hasTrail ? "" : "disabled"
             }>${showing ? "Hide route" : "Show route"}</button>
             ${
-              hasTrail
+              hasTrail && !history
                 ? `<a class="mini-toggle" href="/api/cars/${encodeURIComponent(
                     car.id
                   )}/track.gpx" download>GPX</a>`
                 : ""
             }
             ${
-              car.tracking
+              car.tracking && !history
                 ? `<button type="button" class="mini-toggle" data-refresh="${car.id}">Refresh</button>`
                 : ""
             }
@@ -304,7 +545,11 @@ function renderList(cars) {
       event.stopPropagation();
       const id = btn.getAttribute("data-route");
       if (visibleTrails.has(id)) hideCarTrail(id);
-      else await showCarTrail(id, { fit: true });
+      else if (history) {
+        visibleTrails.add(id);
+        const car = cars.find((c) => c.id === id);
+        if (car) drawCarTrail(car, { fit: true });
+      } else await showCarTrail(id, { fit: true });
       renderList(latestCars);
     });
   }
@@ -349,7 +594,7 @@ function drawCarTrail(car, { fit = false } = {}) {
   const trail = Array.isArray(car.trail) ? car.trail : [];
   if (trail.length < 2) return;
   const latlngs = trail.map((p) => [p.lat, p.lon]);
-  const color = car.color || "#ffc14a";
+  const color = markerColor(car) || car.color || "#3d7dff";
   if (trailLayers.has(car.id)) {
     trailLayers.get(car.id).setLatLngs(latlngs).setStyle({ color });
   } else {
@@ -390,10 +635,11 @@ function renderMap(cars) {
     seen.add(car.id);
     bounds.push([car.last.lat, car.last.lon]);
 
-    const html = `<div class="leaflet-marker-num" style="background:${car.color}">${escapeHtml(
+    const color = markerColor(car);
+    const html = `<div class="leaflet-marker-num" style="background:${color}">${escapeHtml(
       car.carNumber
     )}</div>`;
-    const icon = L.divIcon({ className: "", html, iconSize: [34, 28], iconAnchor: [17, 14] });
+    const icon = L.divIcon({ className: "", html, iconSize: [36, 36], iconAnchor: [18, 18] });
 
     if (markers.has(car.id)) {
       const marker = markers.get(car.id);
@@ -430,10 +676,35 @@ function escapeHtml(value) {
     .replace(/"/g, "&quot;");
 }
 
-refresh();
-refreshSections();
-setInterval(refresh, 3000);
-setInterval(refreshSections, 4000);
+async function ensureControlAuth() {
+  const res = await fetch("/api/me");
+  if (res.status === 401) {
+    location.replace("/control-login.html");
+    return false;
+  }
+  const data = await res.json().catch(() => ({}));
+  if (data.mustChangePassword) {
+    location.replace("/control-login.html?change=1");
+    return false;
+  }
+  earthToken = data.earthToken || "";
+  return true;
+}
+
+document.getElementById("logoutBtn")?.addEventListener("click", async () => {
+  await fetch("/api/logout", { method: "POST" });
+  location.replace("/control-login.html");
+});
+
+ensureControlAuth().then((ok) => {
+  if (!ok) return;
+  refresh();
+  refreshSections();
+  refreshRallies();
+  setInterval(refresh, 3000);
+  setInterval(refreshSections, 4000);
+  setInterval(refreshRallies, 8000);
+});
 
 function resizeMap() {
   map.invalidateSize();
