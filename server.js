@@ -16,6 +16,22 @@ const MAX_BATCH = 250;
 const MAX_POINT_AGE_MS = 24 * 60 * 60 * 1000;
 const store = getStore();
 
+async function liveSections() {
+  try {
+    const live = await store.getLiveRally();
+    if (live?.id) return { rallyId: live.id, sections: await store.listSections(live.id) };
+    const rallies = await store.listRallies();
+    if (rallies.length) return { rallyId: null, sections: [] };
+  } catch {
+    /* rallies table missing — fall back to any stored route */
+  }
+  try {
+    return { rallyId: null, sections: await store.listSections() };
+  } catch {
+    return { rallyId: null, sections: [] };
+  }
+}
+
 app.set("trust proxy", 1);
 app.disable("x-powered-by");
 app.use(express.json({ limit: "15mb" }));
@@ -420,7 +436,7 @@ app.post(
       return res.status(400).json({ error: "Invalid coordinates." });
     }
 
-    const sections = await store.listSections().catch(() => []);
+    const { sections } = await liveSections();
     applyFix(car, point, sections, { detect: true });
     car.reconnectRequested = null;
     await store.saveCar(car);
@@ -448,7 +464,7 @@ app.post(
       return res.status(400).json({ error: "Invalid coordinates." });
     }
 
-    const sections = await store.listSections().catch(() => []);
+    const { sections } = await liveSections();
     for (let i = 0; i < points.length; i += 1) {
       applyFix(car, points[i], sections, { detect: i === points.length - 1 });
     }
@@ -487,7 +503,7 @@ app.post(
     if (!car || car.token !== req.body.token) {
       return res.status(401).json({ error: "Unknown car session." });
     }
-    const sections = await store.listSections();
+    const { sections } = await liveSections();
     const live = sections.find((s) => s.id === car.section?.id) || car.section;
     const { flagStatus, flagTs } = sectionFlag(live);
     if (!live || live.type !== "stage" || flagStatus !== "red") {
@@ -749,15 +765,32 @@ app.get(
 
 app.get(
   "/api/sections",
-  asyncHandler(async (_req, res) => {
-    const sections = await store.listSections();
-    res.json({ sections });
+  asyncHandler(async (req, res) => {
+    const requested = String(req.query.rallyId || "").trim();
+    if (requested) {
+      if (!auth.sessionFromRequest(req)) {
+        return res.status(401).json({ error: "Sign in to race control." });
+      }
+      const rally = await store.getRally(requested).catch(() => null);
+      if (!rally) return res.status(404).json({ error: "Rally not found." });
+      const sections = await store.listSections(requested);
+      return res.json({ sections, rallyId: requested });
+    }
+    const live = await liveSections();
+    res.json({ sections: live.sections, rallyId: live.rallyId });
   })
 );
 
 app.post(
   "/api/sections/upload",
   asyncHandler(async (req, res) => {
+    const rallyId = String(req.body.rallyId || "").trim();
+    if (!rallyId) {
+      return res.status(400).json({ error: "Select a rally first, then upload its KMZ." });
+    }
+    const rally = await store.getRally(rallyId).catch(() => null);
+    if (!rally) return res.status(404).json({ error: "Rally not found. Create the event first." });
+
     const filename = String(req.body.filename || "route.kmz");
     const contentBase64 = String(req.body.contentBase64 || "");
     const replace = req.body.replace !== false;
@@ -782,11 +815,12 @@ app.post(
     }
 
     const saved = replace
-      ? await store.replaceSections(parsed)
-      : await store.replaceSections([...(await store.listSections()), ...parsed]);
+      ? await store.replaceSections(parsed, rallyId)
+      : await store.replaceSections([...(await store.listSections(rallyId)), ...parsed], rallyId);
 
     res.json({
       ok: true,
+      rallyId,
       count: saved.length,
       stages: saved.filter((s) => s.type === "stage").length,
       roads: saved.filter((s) => s.type === "road").length,
@@ -808,9 +842,10 @@ app.patch(
     const name = req.body.name != null ? String(req.body.name).trim() : undefined;
     const patch = {};
     if (name) patch.name = name;
+    const current = (await store.getSection(req.params.id)) || null;
     if (type === "stage" || type === "road") {
       patch.type = type;
-      patch.label = buildLabel(name || (await store.listSections()).find((s) => s.id === req.params.id)?.name || "Section", type);
+      patch.label = buildLabel(name || current?.name || "Section", type);
       if (type === "road") {
         patch.flagStatus = "green";
         patch.flagTs = Date.now();
@@ -818,8 +853,6 @@ app.patch(
     }
     if (typeof req.body.active === "boolean") patch.active = req.body.active;
     if (req.body.flagStatus === "red" || req.body.flagStatus === "green") {
-      const current =
-        (await store.listSections()).find((s) => s.id === req.params.id) || null;
       if (req.body.flagStatus === "red" && current && current.type !== "stage") {
         return res.status(400).json({ error: "Only special stages can be red-flagged." });
       }
@@ -834,9 +867,15 @@ app.patch(
 
 app.delete(
   "/api/sections",
-  asyncHandler(async (_req, res) => {
-    await store.clearSections();
-    res.json({ ok: true });
+  asyncHandler(async (req, res) => {
+    const rallyId = String(req.query.rallyId || req.body?.rallyId || "").trim();
+    if (!rallyId) {
+      return res.status(400).json({ error: "Select a rally first, then clear its KMZ." });
+    }
+    const rally = await store.getRally(rallyId).catch(() => null);
+    if (!rally) return res.status(404).json({ error: "Rally not found." });
+    await store.clearSections(rallyId);
+    res.json({ ok: true, rallyId });
   })
 );
 
@@ -878,7 +917,8 @@ app.get("/earth-link.kml", (req, res) => {
 app.get(
   "/earth.kml",
   asyncHandler(async (_req, res) => {
-    const [cars, sections] = await Promise.all([store.listCars(), store.listSections()]);
+    const [cars, liveRoute] = await Promise.all([store.listCars(), liveSections()]);
+    const sections = liveRoute.sections;
     let mapOpen = true;
     try {
       const rallies = await store.listRallies();

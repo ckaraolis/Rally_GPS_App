@@ -27,3 +27,21 @@ create table if not exists rally_control_users (
 
 alter table rally_control_users enable row level security;
 
+-- Attach each KMZ/route to one rally event (not a single system-wide route).
+-- Requires rally_sections from schema_routes.sql.
+do $$
+begin
+  if exists (
+    select 1 from information_schema.tables
+    where table_schema = 'public' and table_name = 'rally_sections'
+  ) then
+    alter table rally_sections add column if not exists rally_id uuid;
+    if not exists (
+      select 1 from pg_indexes
+      where schemaname = 'public' and indexname = 'rally_sections_rally_id_idx'
+    ) then
+      create index rally_sections_rally_id_idx on rally_sections (rally_id);
+    end if;
+  end if;
+end $$;
+

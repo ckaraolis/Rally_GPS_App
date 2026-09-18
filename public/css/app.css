@@ -503,6 +503,19 @@ input {
 .rally-badge.draft { background: #3d3f36; color: var(--muted); }
 .rally-badge.ended { background: #3d7dff; color: #fff; }
 .rally-badge.history { background: var(--amber); color: #111; }
+.rally-badge.route { background: #fff3c4; color: #111; }
+.car-list li.car-row.selected-rally {
+  outline: 1px solid var(--amber);
+  background: rgba(255, 196, 60, 0.08);
+  margin: 0 -8px;
+  padding-left: 8px;
+  padding-right: 8px;
+  border-radius: 8px;
+}
+.file-btn.disabled {
+  opacity: 0.45;
+  pointer-events: none;
+}
 
 .leaflet-marker-num {
   font-family: var(--font);

@@ -29,6 +29,11 @@ alter table rally_sections
 alter table rally_cars
   add column if not exists flag_ack jsonb;
 
+alter table rally_sections
+  add column if not exists rally_id uuid;
+
+create index if not exists rally_sections_rally_id_idx on rally_sections (rally_id);
+
 -- Optional open policies if using anon key instead of service_role:
 -- create policy "rally_sections_select" on rally_sections for select using (true);
 -- create policy "rally_sections_insert" on rally_sections for insert with check (true);

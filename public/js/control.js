@@ -16,6 +16,9 @@ let ralliesReady = true;
 let viewingRallyId = null;
 let historyCars = [];
 let earthToken = "";
+let selectedRallyId = sessionStorage.getItem("rallyRouteId") || null;
+let rallyCache = [];
+let lastRouteRallyId = null;
 
 const STOPPED_SPEED_MPS = 1.2;
 const MOTION_COLORS = {
@@ -46,6 +49,43 @@ const clearCarsBtn = document.getElementById("clearCarsBtn");
 const rallyForm = document.getElementById("rallyForm");
 const rallyStatus = document.getElementById("rallyStatus");
 const mapModeHint = document.getElementById("mapModeHint");
+const routeTarget = document.getElementById("routeTarget");
+
+function persistSelectedRally(id) {
+  selectedRallyId = id || null;
+  if (selectedRallyId) sessionStorage.setItem("rallyRouteId", selectedRallyId);
+  else sessionStorage.removeItem("rallyRouteId");
+}
+
+function routeRallyId() {
+  if (viewingRallyId) return viewingRallyId;
+  if (selectedRallyId && rallyCache.some((rally) => rally.id === selectedRallyId)) return selectedRallyId;
+  if (liveRally?.id) return liveRally.id;
+  return rallyCache[0]?.id || null;
+}
+
+function routeRally() {
+  const id = routeRallyId();
+  return rallyCache.find((rally) => rally.id === id) || (liveRally?.id === id ? liveRally : null);
+}
+
+function updateRouteTarget() {
+  const rally = routeRally();
+  const fileBtn = routeFile?.closest(".file-btn");
+  if (!rally) {
+    if (routeTarget) routeTarget.textContent = "Create a rally first. The KMZ will belong only to that event.";
+    if (routeFile) routeFile.disabled = true;
+    if (clearRoutes) clearRoutes.disabled = true;
+    fileBtn?.classList.add("disabled");
+    return;
+  }
+  if (routeFile) routeFile.disabled = false;
+  if (clearRoutes) clearRoutes.disabled = false;
+  fileBtn?.classList.remove("disabled");
+  if (routeTarget) {
+    routeTarget.textContent = `KMZ for ${rally.name} (${String(rally.status || "draft").toUpperCase()}). Other rallies keep their own routes.`;
+  }
+}
 
 copyBtn.addEventListener("click", async () => {
   const url = `${location.origin}/earth.kml${earthToken ? `?t=${encodeURIComponent(earthToken)}` : ""}`;
@@ -63,7 +103,13 @@ copyBtn.addEventListener("click", async () => {
 routeFile.addEventListener("change", async () => {
   const file = routeFile.files?.[0];
   if (!file) return;
-  routeStatus.textContent = `Uploading ${file.name}…`;
+  const rallyId = routeRallyId();
+  if (!rallyId) {
+    routeStatus.textContent = "Create or select a rally first, then upload its KMZ.";
+    routeFile.value = "";
+    return;
+  }
+  routeStatus.textContent = `Uploading ${file.name} to this rally…`;
   try {
     const contentBase64 = await fileToBase64(file);
     const res = await fetch("/api/sections/upload", {
@@ -73,11 +119,12 @@ routeFile.addEventListener("change", async () => {
         filename: file.name,
         contentBase64,
         replace: true,
+        rallyId,
       }),
     });
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || "Upload failed");
-    routeStatus.textContent = `Loaded ${data.count} sections (${data.stages} stages, ${data.roads} road).`;
+    routeStatus.textContent = `Loaded ${data.count} sections for this rally (${data.stages} stages, ${data.roads} road).`;
     await refreshSections();
   } catch (err) {
     routeStatus.textContent = err.message || "Upload failed";
@@ -87,9 +134,19 @@ routeFile.addEventListener("change", async () => {
 });
 
 clearRoutes.addEventListener("click", async () => {
-  if (!confirm("Clear all uploaded route sections?")) return;
-  await fetch("/api/sections", { method: "DELETE" });
-  routeStatus.textContent = "Route cleared.";
+  const rally = routeRally();
+  if (!rally) {
+    routeStatus.textContent = "Create or select a rally first.";
+    return;
+  }
+  if (!confirm(`Clear the KMZ for ${rally.name}? Other rallies keep their routes.`)) return;
+  const res = await fetch(`/api/sections?rallyId=${encodeURIComponent(rally.id)}`, { method: "DELETE" });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    routeStatus.textContent = data.error || "Could not clear route";
+    return;
+  }
+  routeStatus.textContent = `Route cleared for ${rally.name}.`;
   await refreshSections();
 });
 
@@ -132,12 +189,14 @@ rallyForm.addEventListener("submit", async (event) => {
     });
     const data = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(data.error || "Could not create rally");
+    persistSelectedRally(data.rally?.id || null);
     rallyForm.reset();
-    rallyStatus.textContent = startLive ? "Rally is LIVE. Cars will show on the map." : "Rally saved.";
+    rallyStatus.textContent = startLive ? "Rally is LIVE. Cars will show on the map." : "Rally saved. Upload the KMZ for this event.";
     viewingRallyId = null;
     historyCars = [];
     await refreshRallies();
     await refresh();
+    await refreshSections();
   } catch (err) {
     rallyStatus.textContent = err.message || "Could not create rally";
   }
@@ -159,10 +218,12 @@ async function viewRallyHistory(id) {
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(data.error || "Could not load rally");
   viewingRallyId = id;
+  persistSelectedRally(id);
   historyCars = Array.isArray(data.rally?.snapshot) ? data.rally.snapshot : [];
   mapModeHint.textContent = `History: ${data.rally?.name || "rally"} — map shows saved cars from this event.`;
   renderList(historyCars, { history: true });
   renderMap(historyCars);
+  await refreshSections();
 }
 
 async function refreshRallies() {
@@ -171,11 +232,18 @@ async function refreshRallies() {
     const data = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(data.error || "Could not load rallies");
     ralliesReady = true;
-    renderRallyList(data.rallies || [], data.liveRally || null);
+    rallyCache = data.rallies || [];
+    if (selectedRallyId && !rallyCache.some((rally) => rally.id === selectedRallyId)) {
+      persistSelectedRally(data.liveRally?.id || rallyCache[0]?.id || null);
+    }
+    renderRallyList(rallyCache, data.liveRally || null);
+    updateRouteTarget();
   } catch (err) {
     ralliesReady = false;
     document.getElementById("rallyList").innerHTML =
       `<li class="empty">${escapeHtml(err.message || "Rallies table missing. Run supabase/schema_rallies.sql in Supabase.")}</li>`;
+    rallyCache = [];
+    updateRouteTarget();
   }
 }
 
@@ -190,13 +258,17 @@ function renderRallyList(rallies, live) {
   const list = document.getElementById("rallyList");
   if (!rallies.length) {
     list.innerHTML = '<li class="empty">No rallies yet</li>';
+    updateRouteTarget();
     return;
   }
+  const activeId = routeRallyId();
   list.innerHTML = rallies
     .map((rally) => {
       const viewing = viewingRallyId === rally.id;
+      const selected = activeId === rally.id;
       const badge = viewing && rally.status !== "live" ? "history" : rally.status;
       const badgeLabel = viewing && rally.status !== "live" ? "VIEWING" : rally.status.toUpperCase();
+      const kmzBadge = selected ? ` <span class="rally-badge route">KMZ</span>` : "";
       const actions =
         rally.status === "live"
           ? `<button type="button" class="mini-toggle" data-rally-status="ended" data-id="${rally.id}">End live</button>`
@@ -213,16 +285,30 @@ function renderRallyList(rallies, live) {
           : viewing
             ? `<button type="button" class="mini-toggle" data-rally-back="1">Close history</button>`
             : "";
-      return `<li class="car-row" data-rally="${rally.id}">
+      return `<li class="car-row${selected ? " selected-rally" : ""}" data-rally="${rally.id}">
         <span class="dot" style="background:${rally.status === "live" ? "#22c55e" : rally.status === "ended" ? "#3d7dff" : "#9a917f"}"></span>
         <div>
-          <strong>${escapeHtml(rally.name)} <span class="rally-badge ${badge}">${badgeLabel}</span></strong>
+          <strong>${escapeHtml(rally.name)} <span class="rally-badge ${badge}">${badgeLabel}</span>${kmzBadge}</strong>
           <small>${escapeHtml(rallyDates(rally))}${rally.carCount ? ` · ${rally.carCount} cars saved` : ""}</small>
           <div class="car-actions">${actions}${backLive}</div>
         </div>
       </li>`;
     })
     .join("");
+
+  for (const row of list.querySelectorAll("li[data-rally]")) {
+    row.addEventListener("click", async () => {
+      const id = row.getAttribute("data-rally");
+      persistSelectedRally(id);
+      if (viewingRallyId && viewingRallyId !== id) {
+        viewingRallyId = null;
+        historyCars = [];
+        await refresh();
+      }
+      renderRallyList(rallies, live);
+      await refreshSections();
+    });
+  }
 
   for (const btn of list.querySelectorAll("button[data-rally-status]")) {
     btn.addEventListener("click", async (event) => {
@@ -231,8 +317,10 @@ function renderRallyList(rallies, live) {
         await setRallyStatus(btn.getAttribute("data-id"), btn.getAttribute("data-rally-status"));
         viewingRallyId = null;
         historyCars = [];
+        persistSelectedRally(btn.getAttribute("data-id"));
         await refreshRallies();
         await refresh();
+        await refreshSections();
       } catch (err) {
         rallyStatus.textContent = err.message;
       }
@@ -256,21 +344,25 @@ function renderRallyList(rallies, live) {
       historyCars = [];
       await refreshRallies();
       await refresh();
+      await refreshSections();
     });
   }
   for (const btn of list.querySelectorAll("button[data-rally-delete]")) {
     btn.addEventListener("click", async (event) => {
       event.stopPropagation();
       if (!confirm("Delete this rally from history?")) return;
-      await fetch(`/api/rallies/${encodeURIComponent(btn.getAttribute("data-rally-delete"))}`, {
+      const deletedId = btn.getAttribute("data-rally-delete");
+      await fetch(`/api/rallies/${encodeURIComponent(deletedId)}`, {
         method: "DELETE",
       });
-      if (viewingRallyId === btn.getAttribute("data-rally-delete")) {
+      if (viewingRallyId === deletedId) {
         viewingRallyId = null;
         historyCars = [];
       }
+      if (selectedRallyId === deletedId) persistSelectedRally(null);
       await refreshRallies();
       await refresh();
+      await refreshSections();
     });
   }
 }
@@ -338,8 +430,27 @@ async function refresh() {
 }
 
 async function refreshSections() {
-  const res = await fetch("/api/sections");
-  const data = await res.json();
+  const rallyId = routeRallyId();
+  updateRouteTarget();
+  if (!rallyId) {
+    renderSections([]);
+    renderRouteLayers([]);
+    return;
+  }
+  if (lastRouteRallyId !== rallyId) {
+    lastRouteRallyId = rallyId;
+    fittedRouteOnce = false;
+  }
+  const res = await fetch(`/api/sections?rallyId=${encodeURIComponent(rallyId)}`);
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    renderSections([]);
+    renderRouteLayers([]);
+    if (routeStatus && !routeStatus.textContent) {
+      routeStatus.textContent = data.error || "Could not load this rally’s route.";
+    }
+    return;
+  }
   renderSections(data.sections || []);
   renderRouteLayers(data.sections || []);
 }
@@ -374,7 +485,7 @@ function popupHtml(car) {
 
 function renderSections(sections) {
   if (!sections.length) {
-    sectionList.innerHTML = '<li class="empty">No route uploaded yet</li>';
+    sectionList.innerHTML = '<li class="empty">No route uploaded for this rally yet</li>';
     return;
   }
   sectionList.innerHTML = sections
@@ -696,11 +807,11 @@ document.getElementById("logoutBtn")?.addEventListener("click", async () => {
   location.replace("/control-login.html");
 });
 
-ensureControlAuth().then((ok) => {
+ensureControlAuth().then(async (ok) => {
   if (!ok) return;
+  await refreshRallies();
   refresh();
   refreshSections();
-  refreshRallies();
   setInterval(refresh, 3000);
   setInterval(refreshSections, 4000);
   setInterval(refreshRallies, 8000);
