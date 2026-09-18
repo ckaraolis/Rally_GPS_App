@@ -278,6 +278,7 @@ function renderRallyList(rallies, live) {
             : `<button type="button" class="mini-toggle${viewing ? " active" : ""}" data-rally-view="${rally.id}">${
                 viewing ? "Showing history" : "View history"
               }</button>
+               <button type="button" class="mini-toggle" data-rally-status="live" data-id="${rally.id}">Go live again</button>
                <button type="button" class="mini-toggle" data-rally-delete="${rally.id}">Delete</button>`;
       const backLive =
         viewing && live
@@ -313,11 +314,29 @@ function renderRallyList(rallies, live) {
   for (const btn of list.querySelectorAll("button[data-rally-status]")) {
     btn.addEventListener("click", async (event) => {
       event.stopPropagation();
+      const id = btn.getAttribute("data-id");
+      const nextStatus = btn.getAttribute("data-rally-status");
+      const target = rallies.find((rally) => rally.id === id);
+      if (nextStatus === "live" && live && live.id !== id) {
+        if (
+          !confirm(
+            `${live.name} is LIVE. Ending it will save history, then ${target?.name || "this rally"} goes live. Continue?`
+          )
+        ) {
+          return;
+        }
+      }
       try {
-        await setRallyStatus(btn.getAttribute("data-id"), btn.getAttribute("data-rally-status"));
+        await setRallyStatus(id, nextStatus);
         viewingRallyId = null;
         historyCars = [];
-        persistSelectedRally(btn.getAttribute("data-id"));
+        persistSelectedRally(id);
+        rallyStatus.textContent =
+          nextStatus === "live"
+            ? `${target?.name || "Rally"} is LIVE.`
+            : nextStatus === "ended"
+              ? `${target?.name || "Rally"} ended and was saved to history.`
+              : "";
         await refreshRallies();
         await refresh();
         await refreshSections();
