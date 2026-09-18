@@ -336,6 +336,48 @@ input {
 .hint { color: var(--muted); font-size: 0.95rem; line-height: 1.4; }
 .control-map { min-height: 100vh; background: #0b0c0a; }
 
+.route-tabs {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 4px;
+  margin: 2px 0 4px;
+}
+.route-tab {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  min-height: 48px;
+  padding: 6px 4px;
+  border: 1px solid var(--line);
+  background: #10110f;
+  color: var(--muted);
+  font-family: var(--font);
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  line-height: 1.1;
+  text-align: center;
+  cursor: pointer;
+}
+.route-tab.active {
+  border-color: var(--amber);
+  color: var(--amber);
+  background: #1c1a12;
+}
+.route-tab:focus-visible {
+  outline: 2px solid var(--amber);
+  outline-offset: 1px;
+}
+.route-tab-count {
+  font-family: var(--mono);
+  font-size: 0.8rem;
+  font-weight: 500;
+  letter-spacing: 0;
+  color: inherit;
+}
 .car-list { list-style: none; padding: 0; margin: 0; }
 .car-list li {
   display: grid;
@@ -349,6 +391,11 @@ input {
 .car-list li.car-row {
   grid-template-columns: 18px 1fr;
   align-items: start;
+}
+.car-list li.empty {
+  display: block;
+  cursor: default;
+  color: var(--muted);
 }
 .car-list .dot {
   width: 10px;
@@ -999,5 +1046,6 @@ img.kmz-ge-icon,
   .control-side h1 { font-size: 2rem; }
   .control-map { min-height: 100dvh; }
   .earth-box { margin: 12px 0; padding: 10px; }
+  .route-tabs { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .btn { min-height: 48px; }
 }

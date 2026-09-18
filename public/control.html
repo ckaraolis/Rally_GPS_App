@@ -8,7 +8,7 @@
   <link rel="manifest" href="/manifest.json" />
   <link rel="icon" href="/icons/icon.svg" type="image/svg+xml" />
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-  <link rel="stylesheet" href="/css/app.css?v=gepins2" />
+  <link rel="stylesheet" href="/css/app.css?v=routetabs1" />
 </head>
 <body class="control-body">
   <div class="tape" aria-hidden="true"></div>
@@ -67,7 +67,21 @@
       </label>
       <button id="clearRoutes" type="button" class="btn btn-ghost">Clear this rally’s route</button>
       <p id="routeStatus" class="hint"></p>
-      <ul id="sectionList" class="car-list">
+      <div class="route-tabs" role="tablist" aria-label="Route categories">
+        <button type="button" class="route-tab active" role="tab" data-route-tab="all" aria-selected="true" aria-controls="sectionList">
+          All <span class="route-tab-count">0</span>
+        </button>
+        <button type="button" class="route-tab" role="tab" data-route-tab="stage" aria-selected="false" aria-controls="sectionList">
+          Stages <span class="route-tab-count">0</span>
+        </button>
+        <button type="button" class="route-tab" role="tab" data-route-tab="road" aria-selected="false" aria-controls="sectionList">
+          Road <span class="route-tab-count">0</span>
+        </button>
+        <button type="button" class="route-tab" role="tab" data-route-tab="pins" aria-selected="false" aria-controls="sectionList">
+          Time controls <span class="route-tab-count">0</span>
+        </button>
+      </div>
+      <ul id="sectionList" class="car-list" role="tabpanel">
         <li class="empty">No route uploaded yet</li>
       </ul>
     </div>
@@ -85,6 +99,6 @@
   </aside>
   <div id="map" class="control-map"></div>
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-  <script src="/js/control.js?v=gepins2"></script>
+  <script src="/js/control.js?v=routetabs1"></script>
 </body>
 </html>

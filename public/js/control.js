@@ -70,6 +70,18 @@ const DEFAULT_PIN_IMAGES = {
 };
 let pinIcons = {};
 let pinIconsRallyId = null;
+const ROUTE_TAB_KEY = "rallyRouteTab";
+const ROUTE_TABS = ["all", "stage", "road", "pins"];
+const ROUTE_TAB_EMPTY = {
+  all: "No route uploaded for this rally yet",
+  stage: "No stages on this rally",
+  road: "No road sections on this rally",
+  pins: "No time controls on this rally",
+};
+let selectedRouteTab = sessionStorage.getItem(ROUTE_TAB_KEY) || "all";
+if (!ROUTE_TABS.includes(selectedRouteTab)) selectedRouteTab = "all";
+let allSections = [];
+const routeTabs = document.querySelector(".route-tabs");
 
 function persistSelectedRally(id) {
   selectedRallyId = id || null;
@@ -530,12 +542,48 @@ function popupHtml(car) {
   </div>`;
 }
 
+function persistRouteTab(tab) {
+  selectedRouteTab = tab;
+  sessionStorage.setItem(ROUTE_TAB_KEY, tab);
+}
+
+function sectionCategory(section) {
+  if (isKmzPin(section)) return "pins";
+  if (section.type === "stage") return "stage";
+  return "road";
+}
+
+function filterSectionsByTab(sections, tab) {
+  if (tab === "all") return sections;
+  return sections.filter((section) => sectionCategory(section) === tab);
+}
+
+function updateRouteTabs(sections) {
+  const counts = { all: sections.length, stage: 0, road: 0, pins: 0 };
+  for (const section of sections) counts[sectionCategory(section)] += 1;
+  for (const btn of document.querySelectorAll("[data-route-tab]")) {
+    const tab = btn.getAttribute("data-route-tab");
+    const active = tab === selectedRouteTab;
+    btn.classList.toggle("active", active);
+    btn.setAttribute("aria-selected", active ? "true" : "false");
+    const countEl = btn.querySelector(".route-tab-count");
+    if (countEl) countEl.textContent = String(counts[tab] ?? 0);
+  }
+}
+
 function renderSections(sections) {
-  if (!sections.length) {
-    sectionList.innerHTML = '<li class="empty">No route uploaded for this rally yet</li>';
+  allSections = Array.isArray(sections) ? sections : [];
+  updateRouteTabs(allSections);
+  const filtered = filterSectionsByTab(allSections, selectedRouteTab);
+  if (!allSections.length) {
+    sectionList.innerHTML = `<li class="empty">${ROUTE_TAB_EMPTY.all}</li>`;
     return;
   }
-  sectionList.innerHTML = sections
+  if (!filtered.length) {
+    sectionList.innerHTML = `<li class="empty">${ROUTE_TAB_EMPTY[selectedRouteTab] || ROUTE_TAB_EMPTY.all}</li>`;
+    return;
+  }
+  sectionList.innerHTML = filtered
     .map((section) => {
       const isPin = isKmzPin(section);
       const kind = isPin ? pinCaption(section).toUpperCase() : section.type === "stage" ? "STAGE" : "ROAD";
@@ -590,7 +638,7 @@ function renderSections(sections) {
 
   for (const row of sectionList.querySelectorAll("li[data-section]")) {
     row.addEventListener("click", () => {
-      const section = sections.find((s) => s.id === row.dataset.section);
+      const section = allSections.find((s) => s.id === row.dataset.section);
       const layer = routeLayers.get(section?.id);
       if (!layer) return;
       if (typeof layer.getLatLng === "function") {
@@ -1121,6 +1169,16 @@ document.getElementById("logoutBtn")?.addEventListener("click", async () => {
   await fetch("/api/logout", { method: "POST" });
   location.replace("/control-login.html");
 });
+
+routeTabs?.addEventListener("click", (event) => {
+  const btn = event.target.closest("[data-route-tab]");
+  if (!btn || !routeTabs.contains(btn)) return;
+  const tab = btn.getAttribute("data-route-tab");
+  if (!ROUTE_TABS.includes(tab) || tab === selectedRouteTab) return;
+  persistRouteTab(tab);
+  renderSections(allSections);
+});
+updateRouteTabs(allSections);
 
 ensureControlAuth().then(async (ok) => {
   if (!ok) return;
