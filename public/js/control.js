@@ -1180,20 +1180,37 @@ routeTabs?.addEventListener("click", (event) => {
 });
 updateRouteTabs(allSections);
 
+function resizeMap() {
+  if (!map) return;
+  map.invalidateSize({ animate: false });
+}
+
+function scheduleMapResize() {
+  resizeMap();
+  requestAnimationFrame(resizeMap);
+  setTimeout(resizeMap, 0);
+  setTimeout(resizeMap, 200);
+}
+
 ensureControlAuth().then(async (ok) => {
   if (!ok) return;
   await refreshRallies();
   refresh();
   refreshSections();
+  scheduleMapResize();
   setInterval(refresh, 3000);
   setInterval(refreshSections, 4000);
   setInterval(refreshRallies, 8000);
 });
 
-function resizeMap() {
-  map.invalidateSize();
-}
 window.addEventListener("resize", resizeMap);
 window.addEventListener("orientationchange", () => {
   setTimeout(resizeMap, 250);
 });
+window.addEventListener("load", scheduleMapResize);
+document.fonts?.ready?.then(scheduleMapResize);
+const mapEl = document.getElementById("map");
+if (mapEl && typeof ResizeObserver !== "undefined") {
+  new ResizeObserver(() => resizeMap()).observe(mapEl);
+}
+scheduleMapResize();
