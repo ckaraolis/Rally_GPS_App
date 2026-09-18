@@ -964,6 +964,30 @@ function buildLiveKml(cars, sections = []) {
       <LineStyle><color>${kmlColor("#ff3b30", "ee")}</color><width>5</width></LineStyle>
       <PolyStyle><color>${kmlColor("#ff3b30", "55")}</color></PolyStyle>
     </Style>
+    <Style id="tcStyle">
+      <IconStyle>
+        <color>${kmlColor("#ff3b30")}</color>
+        <scale>1.15</scale>
+        <Icon><href>http://maps.google.com/mapfiles/kml/paddle/red-circle.png</href></Icon>
+        <hotSpot x="0.5" y="0.5" xunits="fraction" yunits="fraction"/>
+      </IconStyle>
+      <LabelStyle>
+        <color>${kmlColor("#ffffff")}</color>
+        <scale>0.9</scale>
+      </LabelStyle>
+    </Style>
+    <Style id="flagStyle">
+      <IconStyle>
+        <color>${kmlColor("#ff3b30")}</color>
+        <scale>1.15</scale>
+        <Icon><href>http://maps.google.com/mapfiles/kml/shapes/flag.png</href></Icon>
+        <hotSpot x="0.5" y="0" xunits="fraction" yunits="fraction"/>
+      </IconStyle>
+      <LabelStyle>
+        <color>${kmlColor("#ffffff")}</color>
+        <scale>0.9</scale>
+      </LabelStyle>
+    </Style>
     <Style id="pinStyle">
       <IconStyle>
         <color>${kmlColor("#f5c518")}</color>
@@ -1017,9 +1041,11 @@ function buildLiveKml(cars, sections = []) {
       const isPin = section.type === "marker" || section.geometryType === "Point" || section.coordinates.length === 1;
       if (isPin) {
         const p = section.coordinates[0];
+        const kind = section.iconKind || p?.iconKind;
+        const styleUrl = kind === "flag" ? "#flagStyle" : kind === "tc" ? "#tcStyle" : "#pinStyle";
         return `      <Placemark>
         <name>${xml(section.name || section.label)}</name>
-        <styleUrl>#pinStyle</styleUrl>
+        <styleUrl>${styleUrl}</styleUrl>
         <Point>
           <altitudeMode>clampToGround</altitudeMode>
           <coordinates>${p.lon},${p.lat},0</coordinates>

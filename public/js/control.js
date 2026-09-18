@@ -509,8 +509,8 @@ function renderSections(sections) {
   }
   sectionList.innerHTML = sections
     .map((section) => {
-      const isPin = section.type === "marker" || section.geometryType === "Point";
-      const kind = isPin ? "PIN" : section.type === "stage" ? "STAGE" : "ROAD";
+      const isPin = isKmzPin(section);
+      const kind = isPin ? pinCaption(section).toUpperCase() : section.type === "stage" ? "STAGE" : "ROAD";
       const flag = section.flagStatus === "red" ? "red" : "green";
       const flagButtons = isPin
         ? ""
@@ -522,10 +522,10 @@ function renderSections(sections) {
           </div>`
           : `<button type="button" class="mini-toggle" data-type="stage" data-id="${section.id}">Make stage</button>`;
       return `<li class="car-row" data-section="${section.id}">
-        <span class="dot" style="background:${isPin ? "#f5c518" : section.type === "stage" ? (flag === "red" ? "#ff1a1a" : "#ff3b30") : "#3d7dff"}"></span>
+        ${listIconHtml(section)}
         <div>
           <strong>${escapeHtml(section.name)}</strong>
-          <small>${kind} · ${escapeHtml(section.label)}${!isPin && section.type === "stage" ? ` · ${flag === "red" ? "RED FLAG" : "GREEN FLAG"}` : ""}</small>
+          <small>${kind}${!isPin && section.type === "stage" ? ` · ${flag === "red" ? "RED FLAG" : "GREEN FLAG"}` : ""}</small>
           ${flagButtons}
         </div>
       </li>`;
@@ -582,12 +582,78 @@ function isKmzPin(section) {
   );
 }
 
-function kmzPinIcon(name) {
+function classifyPinKind(name, iconHref) {
+  const n = String(name || "").toLowerCase();
+  const href = String(iconHref || "").toLowerCase();
+  if (/\b(start|finish|stop)\b/.test(n) || /\/flag|shapes\/flag|triangle/.test(href)) return "flag";
+  if (
+    /\btc\s*\d|\btc\/|\btc\b|time\s*control/.test(n) ||
+    /red-circle|wht-circle|grn-circle|paddle\/[^/]*circle|placemark_circle/.test(href)
+  ) {
+    return "tc";
+  }
+  if (/flag/.test(href)) return "flag";
+  if (/circle|paddle/.test(href)) return "tc";
+  if (/^tc\d/i.test(String(name || "").replace(/\s+/g, ""))) return "tc";
+  return "pin";
+}
+
+function pinKind(section) {
+  return (
+    section.iconKind ||
+    section.coordinates?.[0]?.iconKind ||
+    classifyPinKind(section.name, section.iconHref || section.coordinates?.[0]?.iconHref)
+  );
+}
+
+function pinCaption(section) {
+  const kind = pinKind(section);
+  const name = String(section.name || "");
+  if (kind === "tc") return "Time control";
+  if (kind === "flag") {
+    if (/\bstart\b/i.test(name)) return "Start";
+    if (/\bfinish\b/i.test(name)) return "Finish";
+    if (/\bstop\b/i.test(name)) return "Stop";
+    return "Flag";
+  }
+  return "Placemark";
+}
+
+function listIconHtml(section) {
+  if (isKmzPin(section)) {
+    const kind = pinKind(section);
+    if (kind === "tc") return '<span class="kmz-list-icon tc" title="Time control"></span>';
+    if (kind === "flag") return '<span class="kmz-list-icon flag" title="Flag"></span>';
+    return '<span class="kmz-list-icon pin" title="Placemark"></span>';
+  }
+  if (section.type === "stage") return '<span class="kmz-list-icon stage" title="Special stage"></span>';
+  return '<span class="kmz-list-icon road" title="Road section"></span>';
+}
+
+function kmzPinIcon(section) {
+  const kind = pinKind(section);
+  const name = escapeHtml(section.name || "Pin");
+  if (kind === "tc") {
+    return L.divIcon({
+      className: "kmz-pin kmz-pin-row",
+      html: `<span class="kmz-pin-label">${name}</span><span class="kmz-tc-mark"><span></span></span>`,
+      iconSize: [150, 24],
+      iconAnchor: [138, 12],
+    });
+  }
+  if (kind === "flag") {
+    return L.divIcon({
+      className: "kmz-pin kmz-pin-row",
+      html: `<span class="kmz-pin-label">${name}</span><span class="kmz-flag-mark"></span>`,
+      iconSize: [150, 24],
+      iconAnchor: [138, 20],
+    });
+  }
   return L.divIcon({
-    className: "kmz-pin",
-    html: `<span class="kmz-pin-mark"></span><span class="kmz-pin-label">${escapeHtml(name || "Pin")}</span>`,
-    iconSize: [90, 36],
-    iconAnchor: [45, 18],
+    className: "kmz-pin kmz-pin-row",
+    html: `<span class="kmz-pin-label">${name}</span><span class="kmz-pin-mark"></span>`,
+    iconSize: [150, 24],
+    iconAnchor: [138, 20],
   });
 }
 
@@ -606,7 +672,7 @@ function renderRouteLayers(sections) {
         existing && typeof existing.getLatLng === "function" && typeof existing.getLatLngs !== "function";
       if (isPinMarker) {
         existing.setLatLng(latlng);
-        existing.setIcon?.(kmzPinIcon(section.name));
+        existing.setIcon?.(kmzPinIcon(section));
         existing.setPopupContent?.(`<strong>${escapeHtml(section.name)}</strong>`);
       } else {
         if (existing) {
@@ -614,7 +680,7 @@ function renderRouteLayers(sections) {
           routeLayers.delete(section.id);
         }
         const marker = L.marker(latlng, {
-          icon: kmzPinIcon(section.name),
+          icon: kmzPinIcon(section),
           zIndexOffset: -200,
           keyboard: false,
         })

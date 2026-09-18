@@ -323,7 +323,7 @@ input {
   cursor: pointer;
 }
 .car-list li.car-row {
-  grid-template-columns: 10px 1fr;
+  grid-template-columns: 18px 1fr;
   align-items: start;
 }
 .car-list .dot {
@@ -521,33 +521,144 @@ input {
   border: none !important;
   overflow: visible !important;
 }
+.kmz-pin-row {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+}
 .kmz-pin-mark {
   display: block;
   width: 14px;
   height: 14px;
-  margin: 0 auto;
+  flex-shrink: 0;
   background: #f5c518;
   border: 2px solid #111;
   border-radius: 50% 50% 50% 0;
   transform: rotate(-45deg);
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.45);
 }
+.kmz-tc-mark {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  flex-shrink: 0;
+  background: #e11d1d;
+  border: 2px solid #6b0f0f;
+  border-radius: 50%;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.55);
+}
+.kmz-tc-mark span {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #fff;
+}
+.kmz-flag-mark {
+  position: relative;
+  width: 16px;
+  height: 20px;
+  flex-shrink: 0;
+}
+.kmz-flag-mark::before {
+  content: "";
+  position: absolute;
+  left: 1px;
+  top: 0;
+  width: 2px;
+  height: 20px;
+  background: #1a1a1a;
+}
+.kmz-flag-mark::after {
+  content: "";
+  position: absolute;
+  left: 3px;
+  top: 1px;
+  width: 13px;
+  height: 10px;
+  background: #e11d1d;
+  clip-path: polygon(0 0, 100% 50%, 0 100%);
+  filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.35));
+}
 .kmz-pin-label {
   display: block;
-  margin-top: 4px;
-  width: 90px;
+  min-width: 0;
+  flex: 1;
   color: #fff8e8;
   font-family: "Barlow Condensed", sans-serif;
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 800;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  text-align: center;
+  letter-spacing: 0.03em;
+  text-align: right;
   text-shadow: 0 1px 2px #000, 0 0 4px #000;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
   pointer-events: none;
+}
+.kmz-list-icon {
+  width: 16px;
+  height: 16px;
+  margin-top: 4px;
+  justify-self: center;
+  position: relative;
+}
+.kmz-list-icon.road,
+.kmz-list-icon.stage {
+  height: 4px;
+  margin-top: 10px;
+  border-radius: 2px;
+}
+.kmz-list-icon.road { background: #3d7dff; }
+.kmz-list-icon.stage { background: #ff3b30; }
+.kmz-list-icon.tc {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: #e11d1d;
+  border: 2px solid #6b0f0f;
+  box-sizing: border-box;
+}
+.kmz-list-icon.tc::after {
+  content: "";
+  position: absolute;
+  inset: 3px;
+  border-radius: 50%;
+  background: #fff;
+}
+.kmz-list-icon.flag {
+  width: 14px;
+  height: 16px;
+}
+.kmz-list-icon.flag::before {
+  content: "";
+  position: absolute;
+  left: 2px;
+  top: 1px;
+  width: 2px;
+  height: 14px;
+  background: #ddd;
+}
+.kmz-list-icon.flag::after {
+  content: "";
+  position: absolute;
+  left: 4px;
+  top: 1px;
+  width: 10px;
+  height: 8px;
+  background: #e11d1d;
+  clip-path: polygon(0 0, 100% 50%, 0 100%);
+}
+.kmz-list-icon.pin {
+  width: 12px;
+  height: 12px;
+  background: #f5c518;
+  border: 2px solid #111;
+  border-radius: 50% 50% 50% 0;
+  transform: rotate(-45deg);
+  box-sizing: border-box;
 }
 
 .leaflet-marker-num {
