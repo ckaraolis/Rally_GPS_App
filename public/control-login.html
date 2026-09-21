@@ -7,7 +7,7 @@
   <title>Sign in · Race control</title>
   <link rel="manifest" href="/manifest.json" />
   <link rel="icon" href="/icons/icon.svg" type="image/svg+xml" />
-  <link rel="stylesheet" href="/css/app.css" />
+  <link rel="stylesheet" href="/css/app.css?v=testmode1" />
 </head>
 <body class="driver-body">
   <div class="tape" aria-hidden="true"></div>
@@ -32,6 +32,25 @@
         <button type="submit" class="btn btn-amber">Sign in</button>
       </form>
       <p id="loginError" class="error hidden"></p>
+      <aside class="test-gate-box test-mode">
+        <p class="eyebrow">Not live</p>
+        <h2>Test mode</h2>
+        <p>Sandbox for stage, road, SOS and red flag. Does not touch live rally cars.</p>
+        <a class="btn btn-ghost" href="/test.html">Open test sandbox</a>
+      </aside>
+    </section>
+
+    <section id="signedInPanel" class="panel hidden">
+      <p class="eyebrow">Race control</p>
+      <h1>Signed in</h1>
+      <p class="hint">Open live HQ, or the separate test sandbox. Test mode never writes to a live rally.</p>
+      <a class="btn btn-amber" href="/control.html">Open race control</a>
+      <aside class="test-gate-box test-mode">
+        <p class="eyebrow">Not live</p>
+        <h2>Test mode</h2>
+        <p>Demo stage / road / SOS / red flag without mixing it into the live map.</p>
+        <a class="btn btn-ghost" href="/test.html">Open test sandbox</a>
+      </aside>
     </section>
 
     <section id="changePanel" class="panel hidden">
@@ -56,6 +75,6 @@
       <p id="changeError" class="error hidden"></p>
     </section>
   </main>
-  <script src="/js/login.js?v=auth1"></script>
+  <script src="/js/login.js?v=testmode2"></script>
 </body>
 </html>

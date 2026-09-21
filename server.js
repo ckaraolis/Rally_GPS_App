@@ -4,6 +4,7 @@ const path = require("path");
 const express = require("express");
 const { getStore, hasSupabase, pickColor, newToken, PALETTE, rallySummary } = require("./lib/store");
 const auth = require("./lib/auth");
+const testSession = require("./lib/testSession");
 const { parseKmzOrKml, buildLabel, classifyPinKind } = require("./lib/kml");
 const { detectSection, haversineMeters } = require("./lib/geo");
 
@@ -400,6 +401,40 @@ app.get("/api/health", (_req, res) => {
     supabase: hasSupabase(),
     time: Date.now(),
   });
+});
+
+app.get("/api/test/session", (_req, res) => {
+  res.json(testSession.snapshot());
+});
+
+app.patch(
+  "/api/test/session",
+  asyncHandler(async (req, res) => {
+    try {
+      res.json(testSession.applyHqPatch(req.body || {}));
+    } catch (err) {
+      const code = Number(err.statusCode) || 400;
+      res.status(code).json({ error: err.message || "Could not update test session." });
+    }
+  })
+);
+
+app.post("/api/test/crew-status", (req, res) => {
+  try {
+    res.json(testSession.setCrewStatus(req.body?.status));
+  } catch (err) {
+    const code = Number(err.statusCode) || 400;
+    res.status(code).json({ error: err.message || "Could not set test crew status." });
+  }
+});
+
+app.post("/api/test/flag-ack", (_req, res) => {
+  try {
+    res.json(testSession.ackFlag());
+  } catch (err) {
+    const code = Number(err.statusCode) || 400;
+    res.status(code).json({ error: err.message || "Could not acknowledge test red flag." });
+  }
 });
 
 app.post(

@@ -20,6 +20,17 @@ const MAX_QUEUE = 2000;
 const MIN_QUEUE_METERS = 3;
 const MIN_QUEUE_MS = 4000;
 const FLAG_SOUND_SRC = "/audio/red-flag-alert.wav?v=1";
+const CREW_HOLD_MS = 3000;
+
+function isRallyTestPage() {
+  const path = String(location.pathname || "");
+  if (!/\/test-driver\.html$/i.test(path)) return false;
+  return (
+    window.RALLY_TEST_MODE === true ||
+    new URLSearchParams(location.search).get("test") === "1"
+  );
+}
+const TEST_MODE = isRallyTestPage();
 
 let session = null;
 let watchId = null;
@@ -44,30 +55,35 @@ let acknowledgedStop = false;
 let flagAudio = null;
 let flagSoundWanted = false;
 let flagSoundRetryBound = false;
+let crewStatusSent = null;
+let activeHold = null;
 
-if (!window.isSecureContext) {
+if (!TEST_MODE && !window.isSecureContext && secureNote) {
   secureNote.textContent =
     "This browser will not share GPS over plain HTTP. Open the app with HTTPS (deploy it, or use a tunnel such as cloudflared).";
   secureNote.classList.remove("hidden");
 }
 
-if ("serviceWorker" in navigator) {
+if (!TEST_MODE && "serviceWorker" in navigator) {
   navigator.serviceWorker.register("/sw.js").catch(() => {});
 }
 
-const saved = localStorage.getItem(KEY);
-if (saved) {
-  try {
-    session = JSON.parse(saved);
-    showTrack();
-    if (trackingWanted()) startTracking();
-  } catch {
-    localStorage.removeItem(KEY);
-    setTrackingWanted(false);
+if (!TEST_MODE) {
+  const saved = localStorage.getItem(KEY);
+  if (saved) {
+    try {
+      session = JSON.parse(saved);
+      showTrack();
+      if (trackingWanted()) startTracking();
+    } catch {
+      localStorage.removeItem(KEY);
+      setTrackingWanted(false);
+    }
   }
 }
 
-joinForm.addEventListener("submit", async (event) => {
+joinForm?.addEventListener("submit", async (event) => {
+  if (TEST_MODE) return;
   event.preventDefault();
   errorRead.classList.add("hidden");
   document.getElementById("setupError")?.classList.add("hidden");
@@ -89,17 +105,31 @@ joinForm.addEventListener("submit", async (event) => {
   }
 });
 
-toggleBtn.addEventListener("click", () => {
+toggleBtn?.addEventListener("click", () => {
+  if (TEST_MODE) return;
   if (tracking) stopTracking();
   else startTracking();
 });
-document.getElementById("stageStopBtn").addEventListener("click", () => stopTracking());
+document.getElementById("stageStopBtn")?.addEventListener("click", () => {
+  if (TEST_MODE) return;
+  stopTracking();
+});
 
 async function sendCrew(status) {
   acknowledgedStop = true;
   hideCrewAlert();
+  setCrewStatusUi(status);
+  renderMode();
   if (!session) return;
   try {
+    if (TEST_MODE) {
+      await fetch("/api/test/crew-status", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status }),
+      });
+      return;
+    }
     await fetch("/api/crew-status", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -110,10 +140,153 @@ async function sendCrew(status) {
   }
 }
 
-document.getElementById("okBtn").addEventListener("click", () => sendCrew("ok"));
-document.getElementById("sosBtn").addEventListener("click", () => sendCrew("sos"));
-document.getElementById("alertOkBtn").addEventListener("click", () => sendCrew("ok"));
-document.getElementById("alertSosBtn").addEventListener("click", () => sendCrew("sos"));
+function crewHoldButtons() {
+  return [
+    { btn: document.getElementById("okBtn"), status: "ok" },
+    { btn: document.getElementById("sosBtn"), status: "sos" },
+    { btn: document.getElementById("alertOkBtn"), status: "ok" },
+    { btn: document.getElementById("alertSosBtn"), status: "sos" },
+  ];
+}
+
+function restoreHoldHint(btn, status, { change = false } = {}) {
+  if (!btn) return;
+  const hint = btn.querySelector(".hold-hint");
+  if (!hint) return;
+  const isAlert = btn.id === "alertOkBtn" || btn.id === "alertSosBtn";
+  if (change) {
+    hint.textContent = isAlert
+      ? status === "ok"
+        ? "Hold 3s to change to OK"
+        : "Hold 3s to change to SOS"
+      : "Hold 3s to change";
+    return;
+  }
+  hint.textContent = isAlert
+    ? status === "ok"
+      ? "Both crew OK · Hold 3s"
+      : "Need help · Hold 3s"
+    : "Hold 3 seconds";
+}
+
+function cancelAnyHold() {
+  if (!activeHold) return;
+  const { button, timer, tick } = activeHold;
+  clearTimeout(timer);
+  clearInterval(tick);
+  button.classList.remove("holding");
+  const sent = button.classList.contains("is-sent");
+  const status = button.id.toLowerCase().includes("sos") ? "sos" : "ok";
+  if (sent) {
+    const hint = button.querySelector(".hold-hint");
+    if (hint) hint.textContent = "Sent to race control";
+  } else {
+    restoreHoldHint(button, status, { change: crewStatusSent && crewStatusSent !== status });
+  }
+  activeHold = null;
+}
+
+function resetCrewStatusUi() {
+  cancelAnyHold();
+  crewStatusSent = null;
+  const banner = document.getElementById("crewStatusBanner");
+  banner.classList.add("hidden");
+  banner.classList.remove("ok", "sos");
+  crewHoldButtons().forEach(({ btn, status }) => {
+    btn.classList.remove("is-sent");
+    btn.setAttribute("aria-pressed", "false");
+    restoreHoldHint(btn, status);
+  });
+}
+
+function setCrewStatusUi(status) {
+  if (status !== "ok" && status !== "sos") {
+    resetCrewStatusUi();
+    return;
+  }
+  crewStatusSent = status;
+  const isOk = status === "ok";
+  const banner = document.getElementById("crewStatusBanner");
+  banner.classList.remove("hidden");
+  banner.classList.toggle("ok", isOk);
+  banner.classList.toggle("sos", !isOk);
+  document.getElementById("crewStatusRead").textContent = isOk ? "GREEN OK" : "RED SOS";
+  document.getElementById("crewStatusHint").textContent = isOk
+    ? "You confirmed OK. Hold SOS 3 seconds to change."
+    : "You confirmed SOS. Hold OK 3 seconds to change.";
+  crewHoldButtons().forEach(({ btn, status: s }) => {
+    const sent = s === status;
+    btn.classList.toggle("is-sent", sent);
+    btn.setAttribute("aria-pressed", sent ? "true" : "false");
+    if (sent) {
+      const hint = btn.querySelector(".hold-hint");
+      if (hint) hint.textContent = "Sent to race control";
+    } else {
+      restoreHoldHint(btn, s, { change: true });
+    }
+  });
+}
+
+function applyCrewStatusFromServer(data) {
+  if (!Object.prototype.hasOwnProperty.call(data, "crewStatus")) return;
+  const next = data.crewStatus?.status;
+  if ((next === "ok" || next === "sos") && !crewStatusSent) {
+    setCrewStatusUi(next);
+  }
+}
+
+function bindCrewHold(button, status) {
+  const hint = button.querySelector(".hold-hint");
+
+  const complete = () => {
+    if (!activeHold || activeHold.button !== button) return;
+    clearTimeout(activeHold.timer);
+    clearInterval(activeHold.tick);
+    button.classList.remove("holding");
+    activeHold = null;
+    sendCrew(status);
+  };
+
+  const start = (event) => {
+    if (event.pointerType === "mouse" && event.button !== 0) return;
+    const isAlert = button.id === "alertOkBtn" || button.id === "alertSosBtn";
+    if (!isAlert && (button.classList.contains("is-sent") || crewStatusSent === status)) return;
+    event.preventDefault();
+    cancelAnyHold();
+    try {
+      if (event.pointerId != null) button.setPointerCapture(event.pointerId);
+    } catch {
+      /* capture is optional */
+    }
+    button.classList.add("holding");
+    const started = Date.now();
+    if (hint) hint.textContent = "Keep holding 3s";
+    const tick = setInterval(() => {
+      const left = Math.max(0, CREW_HOLD_MS - (Date.now() - started));
+      if (hint) hint.textContent = `Keep holding ${Math.max(1, Math.ceil(left / 1000))}s`;
+    }, 120);
+    activeHold = {
+      button,
+      timer: setTimeout(complete, CREW_HOLD_MS),
+      tick,
+    };
+  };
+
+  button.addEventListener("pointerdown", start);
+  button.addEventListener("pointerup", cancelAnyHold);
+  button.addEventListener("pointercancel", cancelAnyHold);
+  button.addEventListener("lostpointercapture", cancelAnyHold);
+  button.addEventListener("click", (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+  });
+  button.addEventListener("contextmenu", (event) => event.preventDefault());
+}
+
+bindCrewHold(document.getElementById("okBtn"), "ok");
+bindCrewHold(document.getElementById("sosBtn"), "sos");
+bindCrewHold(document.getElementById("alertOkBtn"), "ok");
+bindCrewHold(document.getElementById("alertSosBtn"), "sos");
 document.getElementById("redFlagOkBtn").addEventListener("click", ackRedFlag);
 
 async function ackRedFlag() {
@@ -122,6 +295,10 @@ async function ackRedFlag() {
   renderMode();
   if (!session) return;
   try {
+    if (TEST_MODE) {
+      await fetch("/api/test/flag-ack", { method: "POST" });
+      return;
+    }
     await fetch("/api/flag-ack", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -198,7 +375,7 @@ function bindFlagSoundRetry() {
 }
 
 function showTrack() {
-  setupPanel.classList.add("hidden");
+  setupPanel?.classList.add("hidden");
   trackPanel.classList.remove("hidden");
   stagePanel.classList.add("hidden");
   hideCrewAlert();
@@ -236,7 +413,7 @@ function setLamp(mode, title, hint) {
 
 function showError(message) {
   const setupError = document.getElementById("setupError");
-  if (setupError && !setupPanel.classList.contains("hidden")) {
+  if (setupError && setupPanel && !setupPanel.classList.contains("hidden")) {
     setupError.textContent = message;
     setupError.classList.remove("hidden");
   }
@@ -272,16 +449,66 @@ function renderMode() {
   updateBgNote();
 }
 
+function applyTestState(data) {
+  if (!TEST_MODE || !data) return;
+  session = {
+    id: "test-session",
+    token: "test",
+    carNumber: data.carNumber || "99",
+    driverName: data.driverName || "TEST CREW",
+  };
+  tracking = true;
+  const speed = Number(data.speed);
+  const speedText = Number.isFinite(speed) ? `${Math.round(speed * 3.6)} km/h` : "—";
+  const speedRead = document.getElementById("speedRead");
+  const stageSpeed = document.getElementById("stageSpeed");
+  const plateNumber = document.getElementById("plateNumber");
+  const plateName = document.getElementById("plateName");
+  if (speedRead) speedRead.textContent = speedText;
+  if (stageSpeed) stageSpeed.textContent = `Speed ${speedText}`;
+  if (plateNumber) plateNumber.textContent = `#${session.carNumber}`;
+  if (plateName) plateName.textContent = session.driverName;
+  applySectionAndFlag(data);
+  const next = data.crewStatus?.status || null;
+  if (next === "ok" || next === "sos") {
+    if (crewStatusSent !== next) setCrewStatusUi(next);
+  } else if (crewStatusSent) {
+    resetCrewStatusUi();
+  }
+  if (data.forceStoppedAlert && inStage && !shouldShowRedFlag()) {
+    if (crewAlert.classList.contains("hidden")) {
+      acknowledgedStop = false;
+      showCrewAlert();
+    }
+  } else if (!shouldShowRedFlag() && crewAlert.classList.contains("hidden")) {
+    updateStopWatch(Number.isFinite(speed) ? speed : 0);
+  }
+  renderMode();
+}
+
+async function pollTestSession() {
+  if (!TEST_MODE) return;
+  try {
+    const res = await fetch("/api/test/session");
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) return;
+    applyTestState(data);
+  } catch {
+    /* keep last sandbox view */
+  }
+}
+
 function shouldShowRedFlag() {
   return tracking && inStage && stageFlagStatus === "red" && !flagAcked;
 }
 
 function showRedFlagAlert() {
+  cancelAnyHold();
   redFlagAlert.classList.remove("hidden");
   crewAlert.classList.add("hidden");
   trackPanel.classList.add("hidden");
   stagePanel.classList.add("hidden");
-  setupPanel.classList.add("hidden");
+  setupPanel?.classList.add("hidden");
   startFlagSound();
   updateBgNote();
 }
@@ -293,10 +520,16 @@ function hideRedFlagAlert() {
 
 function showCrewAlert() {
   if (shouldShowRedFlag()) return;
+  cancelAnyHold();
   crewAlert.classList.remove("hidden");
   trackPanel.classList.add("hidden");
   stagePanel.classList.add("hidden");
-  setupPanel.classList.add("hidden");
+  setupPanel?.classList.add("hidden");
+  ["alertOkBtn", "alertSosBtn"].forEach((id) => {
+    const btn = document.getElementById(id);
+    btn.classList.remove("is-sent");
+    restoreHoldHint(btn, id === "alertSosBtn" ? "sos" : "ok");
+  });
   updateBgNote();
 }
 
@@ -322,6 +555,7 @@ function updateStopWatch(speed) {
 }
 
 async function startTracking() {
+  if (TEST_MODE) return;
   if (tracking && watchId != null) {
     await resumeForegroundTracking();
     return;
@@ -349,6 +583,7 @@ async function startTracking() {
 }
 
 async function stopTracking() {
+  if (TEST_MODE) return;
   tracking = false;
   inStage = false;
   sectionType = null;
@@ -357,6 +592,7 @@ async function stopTracking() {
   setTrackingWanted(false);
   hideCrewAlert();
   hideRedFlagAlert();
+  resetCrewStatusUi();
   if (watchId != null) {
     navigator.geolocation.clearWatch(watchId);
     watchId = null;
@@ -398,7 +634,7 @@ function requestFreshFix() {
 }
 
 async function pollReconnect() {
-  if (!tracking || !session) return;
+  if (TEST_MODE || !tracking || !session) return;
   let nudged = false;
   try {
     const res = await fetch("/api/poll", {
@@ -412,8 +648,9 @@ async function pollReconnect() {
       return;
     }
     nudged = Boolean(data.reconnectRequested);
-    if (data.section !== undefined || data.flagStatus) {
+    if (data.section !== undefined || data.flagStatus || data.crewStatus !== undefined) {
       applySectionAndFlag(data);
+      applyCrewStatusFromServer(data);
       renderMode();
     }
   } catch {
@@ -431,7 +668,7 @@ async function pollReconnect() {
   else requestFreshFix();
 }
 
-setInterval(pollReconnect, 4000);
+if (!TEST_MODE) setInterval(pollReconnect, 4000);
 
 function ensureGeoWatch() {
   if (!tracking || !navigator.geolocation) return;
@@ -501,12 +738,14 @@ function applyPingResult(data, speed) {
   lastPingOkAt = Date.now();
   setLiveLamp();
   applySectionAndFlag(data);
+  applyCrewStatusFromServer(data);
   if (!shouldShowRedFlag()) updateStopWatch(speed);
   renderMode();
 }
 
 function applySectionAndFlag(data) {
   const wasInStage = inStage;
+  const prevStageId = stageId;
   if (Object.prototype.hasOwnProperty.call(data, "section")) {
     sectionType = data.section?.type || null;
     sectionLabel = data.section?.label || data.section?.name || null;
@@ -519,6 +758,7 @@ function applySectionAndFlag(data) {
     stoppedSinceMs = null;
     acknowledgedStop = false;
     hideCrewAlert();
+    resetCrewStatusUi();
   }
   if (wasInStage && !inStage) {
     stoppedSinceMs = null;
@@ -527,6 +767,13 @@ function applySectionAndFlag(data) {
     hideRedFlagAlert();
     stageFlagStatus = "green";
     flagAcked = true;
+    resetCrewStatusUi();
+  }
+  if (wasInStage && inStage && stageId && prevStageId && stageId !== prevStageId) {
+    stoppedSinceMs = null;
+    acknowledgedStop = false;
+    hideCrewAlert();
+    resetCrewStatusUi();
   }
 }
 
@@ -581,7 +828,7 @@ function queueMeters(a, b) {
 }
 
 async function flushQueue() {
-  if (!session) return { ok: false };
+  if (TEST_MODE || !session) return { ok: false };
   if (flushing) return { ok: true, busy: true };
   if (!loadQueue().length) return { ok: true, empty: true };
   flushing = true;
@@ -742,7 +989,7 @@ function updateBgNote() {
   if (!el) return;
   const alertsUp =
     !crewAlert.classList.contains("hidden") || !redFlagAlert.classList.contains("hidden");
-  if (!tracking || !session || alertsUp || !setupPanel.classList.contains("hidden")) {
+  if (TEST_MODE || !tracking || !session || alertsUp || !setupPanel?.classList.contains("hidden")) {
     el.classList.add("hidden");
     el.classList.remove("ok");
     return;
@@ -834,7 +1081,7 @@ function applyFlagFromServer(data, { ackSource = "server" } = {}) {
 }
 
 async function pollStageFlag() {
-  if (!tracking || !inStage || !stageId) return;
+  if (TEST_MODE || !tracking || !inStage || !stageId) return;
   try {
     const res = await fetch("/api/sections");
     const data = await res.json();
@@ -853,63 +1100,91 @@ async function pollStageFlag() {
   }
 }
 
-setInterval(pollStageFlag, 2000);
+if (!TEST_MODE) setInterval(pollStageFlag, 2000);
 
-document.addEventListener("visibilitychange", async () => {
-  if (!tracking && trackingWanted() && session) {
-    await startTracking();
-    return;
+if (TEST_MODE) {
+  session = { id: "test-session", token: "test", carNumber: "99", driverName: "TEST CREW" };
+  tracking = true;
+  sectionType = "road";
+  sectionLabel = "Liaison Test";
+  showTrack();
+  setLamp("lamp-live", "TEST MODE", "NOT LIVE. HQ sandbox — no GPS, no rally cars.");
+  pollTestSession();
+  setInterval(pollTestSession, 500);
+  try {
+    const bus = new BroadcastChannel("rally-gps-test");
+    bus.addEventListener("message", () => pollTestSession());
+  } catch {
+    /* BroadcastChannel optional */
   }
-  if (!tracking) return;
-  // Do not clearWatch or stop GPS just because the document is hidden.
-  if (document.visibilityState === "visible") {
-    await resumeForegroundTracking();
-    return;
-  }
-  setLiveLamp();
-  updateBgNote();
-  requestFreshFix();
-  flushQueue();
-});
+  window.addEventListener("message", (event) => {
+    if (event.origin !== location.origin) return;
+    if (event.data?.type === "rally-test-unlock") unlockFlagSound();
+  });
+  const unlock = () => unlockFlagSound();
+  document.addEventListener("pointerdown", unlock, { once: true });
+  document.addEventListener("keydown", unlock, { once: true });
+} else {
+  document.addEventListener("visibilitychange", async () => {
+    if (!tracking && trackingWanted() && session) {
+      await startTracking();
+      return;
+    }
+    if (!tracking) return;
+    if (document.visibilityState === "visible") {
+      await resumeForegroundTracking();
+      return;
+    }
+    cancelAnyHold();
+    setLiveLamp();
+    updateBgNote();
+    requestFreshFix();
+    flushQueue();
+  });
 
-window.addEventListener("pageshow", () => {
-  if (!session) return;
-  if (trackingWanted() && !tracking) startTracking();
-  else if (tracking) resumeForegroundTracking();
-});
+  window.addEventListener("pageshow", () => {
+    if (!session) return;
+    if (trackingWanted() && !tracking) startTracking();
+    else if (tracking) resumeForegroundTracking();
+  });
 
-window.addEventListener("focus", () => {
-  if (tracking) resumeForegroundTracking();
-});
+  window.addEventListener("focus", () => {
+    if (tracking) resumeForegroundTracking();
+  });
 
-document.addEventListener("resume", () => {
-  if (trackingWanted() && !tracking && session) startTracking();
-  else if (tracking) resumeForegroundTracking();
-});
+  document.addEventListener("resume", () => {
+    if (trackingWanted() && !tracking && session) startTracking();
+    else if (tracking) resumeForegroundTracking();
+  });
 
-window.addEventListener("online", () => {
-  if (tracking) flushQueue();
-});
+  window.addEventListener("online", () => {
+    if (tracking) flushQueue();
+  });
 
-window.addEventListener("pagehide", () => {
-  if (tracking && session && lastFix) {
-    const { latitude: lat, longitude: lon, heading, speed, accuracy } = lastFix.coords;
-    navigator.sendBeacon?.(
-      "/api/ping",
-      new Blob(
-        [
-          JSON.stringify({
-            id: session.id,
-            token: session.token,
-            lat,
-            lon,
-            heading,
-            speed,
-            accuracy,
-          }),
-        ],
-        { type: "application/json" }
-      )
-    );
-  }
-});
+  window.addEventListener("pagehide", () => {
+    if (tracking && session && lastFix) {
+      const { latitude: lat, longitude: lon, heading, speed, accuracy } = lastFix.coords;
+      navigator.sendBeacon?.(
+        "/api/ping",
+        new Blob(
+          [
+            JSON.stringify({
+              id: session.id,
+              token: session.token,
+              lat,
+              lon,
+              heading,
+              speed,
+              accuracy,
+            }),
+          ],
+          { type: "application/json" }
+        )
+      );
+    }
+  });
+}
+
+window.addEventListener("pointerup", cancelAnyHold);
+window.addEventListener("pointercancel", cancelAnyHold);
+window.addEventListener("blur", cancelAnyHold);

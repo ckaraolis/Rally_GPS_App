@@ -13,8 +13,11 @@ import android.media.MediaPlayer
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.os.PowerManager
 import android.provider.Settings
+import android.view.MotionEvent
 import android.view.View
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
@@ -33,6 +36,7 @@ class MainActivity : AppCompatActivity() {
     private var tracking = false
     private var inStage = false
     private var stageName: String? = null
+    private var stageId: String? = null
     private var sectionType: String? = null
     private var sectionLabel: String? = null
     private var stoppedSinceMs: Long? = null
@@ -44,6 +48,12 @@ class MainActivity : AppCompatActivity() {
     private var flagAcked = true
     private var redFlagBlink: ValueAnimator? = null
     private var flagPlayer: MediaPlayer? = null
+    private var crewStatusSent: String? = null
+    private val holdHandler = Handler(Looper.getMainLooper())
+    private var holdRunnable: Runnable? = null
+    private var holdAnimator: ValueAnimator? = null
+    private var holdFill: View? = null
+    private var holdHintTick: Runnable? = null
 
     private val permissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
@@ -92,12 +102,17 @@ class MainActivity : AppCompatActivity() {
                 sectionLabel = incomingLabel ?: sectionName
             }
             val wasInStage = inStage
+            val prevStageId = stageId
+            if (intent.hasExtra(TrackingActions.EXTRA_SECTION_ID)) {
+                stageId = intent.getStringExtra(TrackingActions.EXTRA_SECTION_ID)?.ifBlank { null }
+            }
             inStage = tracking && sectionType == "stage"
             stageName = sectionLabel
             if (!wasInStage && inStage) {
                 stoppedSinceMs = null
                 acknowledgedStop = false
                 hideCrewAlert()
+                resetCrewStatusUi()
             }
             if (wasInStage && !inStage) {
                 stoppedSinceMs = null
@@ -106,6 +121,13 @@ class MainActivity : AppCompatActivity() {
                 hideRedFlagAlert()
                 stageFlagStatus = "green"
                 flagAcked = true
+                resetCrewStatusUi()
+            }
+            if (wasInStage && inStage && stageId != null && prevStageId != null && stageId != prevStageId) {
+                stoppedSinceMs = null
+                acknowledgedStop = false
+                hideCrewAlert()
+                resetCrewStatusUi()
             }
 
             if (intent.hasExtra(TrackingActions.EXTRA_FLAG_STATUS)) {
@@ -154,6 +176,9 @@ class MainActivity : AppCompatActivity() {
 
         binding.serverUrl.setText(SessionStore.loadServerUrl(this))
         session = SessionStore.load(this)
+        crewStatusSent = savedInstanceState?.getString(STATE_CREW_STATUS)
+        inStage = savedInstanceState?.getBoolean(STATE_IN_STAGE) ?: false
+        stageId = savedInstanceState?.getString(STATE_STAGE_ID)
         if (session != null) {
             tracking = SessionStore.trackingWanted(this) || TrackingService.isActive
             showTrackPanel()
@@ -173,20 +198,11 @@ class MainActivity : AppCompatActivity() {
             showSetupPanel()
         }
 
-        val sendCrew = { status: String ->
-            acknowledgedStop = true
-            hideCrewAlert()
-            sendCrewStatus(status)
-            Toast.makeText(
-                this,
-                if (status == "ok") "GREEN OK sent to race control" else "RED SOS sent to race control",
-                Toast.LENGTH_LONG
-            ).show()
-        }
-        binding.okBtn.setOnClickListener { sendCrew("ok") }
-        binding.sosBtn.setOnClickListener { sendCrew("sos") }
-        binding.alertOkBtn.setOnClickListener { sendCrew("ok") }
-        binding.alertSosBtn.setOnClickListener { sendCrew("sos") }
+        bindHold(binding.okHoldWrap, binding.okHoldFill, "ok")
+        bindHold(binding.sosHoldWrap, binding.sosHoldFill, "sos")
+        bindHold(binding.alertOkHoldWrap, binding.alertOkHoldFill, "ok")
+        bindHold(binding.alertSosHoldWrap, binding.alertSosHoldFill, "sos")
+        applyCrewStatusUi()
         binding.redFlagOkBtn.setOnClickListener {
             flagAcked = true
             hideRedFlagAlert()
@@ -211,12 +227,25 @@ class MainActivity : AppCompatActivity() {
         restoreTrackingIfNeeded()
     }
 
+    override fun onPause() {
+        cancelHold()
+        super.onPause()
+    }
+
+    override fun onSaveInstanceState(outState: Bundle) {
+        super.onSaveInstanceState(outState)
+        outState.putString(STATE_CREW_STATUS, crewStatusSent)
+        outState.putBoolean(STATE_IN_STAGE, inStage)
+        outState.putString(STATE_STAGE_ID, stageId)
+    }
+
     override fun onStop() {
         unregisterReceiver(statusReceiver)
         super.onStop()
     }
 
     override fun onDestroy() {
+        cancelHold()
         stopRedFlagSound()
         stopRedFlagBlink()
         super.onDestroy()
@@ -263,11 +292,14 @@ class MainActivity : AppCompatActivity() {
 
     private fun showCrewAlert() {
         if (shouldShowRedFlag()) return
+        cancelHold()
         crewAlertVisible = true
         binding.crewAlert.visibility = View.VISIBLE
         binding.trackPanel.visibility = View.GONE
         binding.stagePanel.visibility = View.GONE
         binding.setupPanel.visibility = View.GONE
+        binding.alertOkBtn.text = idleHoldLabel("ok", alert = true, change = false)
+        binding.alertSosBtn.text = idleHoldLabel("sos", alert = true, change = false)
     }
 
     private fun hideCrewAlert() {
@@ -276,6 +308,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun showRedFlagAlert() {
+        cancelHold()
         redFlagVisible = true
         hideCrewAlert()
         binding.redFlagAlert.visibility = View.VISIBLE
@@ -384,6 +417,162 @@ class MainActivity : AppCompatActivity() {
             .setAction(TrackingService.ACTION_CREW_STATUS)
             .putExtra(TrackingService.EXTRA_CREW_STATUS, status)
         startService(intent)
+    }
+
+    private fun bindHold(wrap: View, fill: View, status: String) {
+        wrap.setOnTouchListener { view, event ->
+            when (event.actionMasked) {
+                MotionEvent.ACTION_DOWN -> {
+                    val isAlert = wrap === binding.alertOkHoldWrap || wrap === binding.alertSosHoldWrap
+                    if (!isAlert && crewStatusSent == status) {
+                        return@setOnTouchListener true
+                    }
+                    view.parent?.requestDisallowInterceptTouchEvent(true)
+                    beginHold(fill, status)
+                }
+                MotionEvent.ACTION_MOVE -> {
+                    if (event.x < 0 || event.y < 0 || event.x > view.width || event.y > view.height) {
+                        view.parent?.requestDisallowInterceptTouchEvent(false)
+                        cancelHold()
+                    }
+                }
+                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                    view.parent?.requestDisallowInterceptTouchEvent(false)
+                    cancelHold()
+                }
+            }
+            true
+        }
+    }
+
+    private fun beginHold(fill: View, status: String) {
+        cancelHold()
+        fill.pivotX = 0f
+        fill.scaleX = 0f
+        holdFill = fill
+        val startedAt = android.os.SystemClock.elapsedRealtime()
+        updateHoldButtonText(status, CREW_HOLD_MS)
+        holdAnimator = ValueAnimator.ofFloat(0f, 1f).apply {
+            duration = CREW_HOLD_MS
+            addUpdateListener { fill.scaleX = it.animatedValue as Float }
+            start()
+        }
+        val tick = object : Runnable {
+            override fun run() {
+                val left = CREW_HOLD_MS - (android.os.SystemClock.elapsedRealtime() - startedAt)
+                if (left <= 0L) return
+                updateHoldButtonText(status, left)
+                holdHandler.postDelayed(this, 200L)
+            }
+        }
+        holdHintTick = tick
+        holdHandler.post(tick)
+        val done = Runnable {
+            clearHoldVisuals()
+            confirmCrew(status)
+        }
+        holdRunnable = done
+        holdHandler.postDelayed(done, CREW_HOLD_MS)
+    }
+
+    private fun clearHoldVisuals() {
+        holdRunnable?.let { holdHandler.removeCallbacks(it) }
+        holdHintTick?.let { holdHandler.removeCallbacks(it) }
+        holdRunnable = null
+        holdHintTick = null
+        holdAnimator?.cancel()
+        holdAnimator = null
+        holdFill?.scaleX = 0f
+        holdFill = null
+    }
+
+    private fun cancelHold() {
+        val wasHolding = holdRunnable != null
+        clearHoldVisuals()
+        if (wasHolding) applyCrewStatusUi()
+    }
+
+    private fun confirmCrew(status: String) {
+        acknowledgedStop = true
+        hideCrewAlert()
+        crewStatusSent = status
+        applyCrewStatusUi()
+        sendCrewStatus(status)
+        renderMode()
+    }
+
+    private fun resetCrewStatusUi() {
+        clearHoldVisuals()
+        crewStatusSent = null
+        if (::binding.isInitialized) applyCrewStatusUi()
+    }
+
+    private fun applyCrewStatusUi() {
+        val status = crewStatusSent
+        if (status != "ok" && status != "sos") {
+            binding.crewStatusBanner.visibility = View.GONE
+            binding.okBtn.text = idleHoldLabel("ok", alert = false, change = false)
+            binding.sosBtn.text = idleHoldLabel("sos", alert = false, change = false)
+            binding.alertOkBtn.text = idleHoldLabel("ok", alert = true, change = false)
+            binding.alertSosBtn.text = idleHoldLabel("sos", alert = true, change = false)
+            return
+        }
+        val ok = status == "ok"
+        binding.crewStatusBanner.visibility = View.VISIBLE
+        binding.crewStatusBanner.setBackgroundColor(
+            Color.parseColor(if (ok) "#10200c" else "#2a0f0f")
+        )
+        binding.crewStatusRead.text = if (ok) "GREEN OK" else "RED SOS"
+        binding.crewStatusRead.setTextColor(
+            ContextCompat.getColor(this, if (ok) R.color.go else R.color.stop)
+        )
+        binding.crewStatusHint.text = if (ok) {
+            "You confirmed OK. Hold SOS 3 seconds to change."
+        } else {
+            "You confirmed SOS. Hold OK 3 seconds to change."
+        }
+        binding.okBtn.text = if (ok) sentHoldLabel("ok", false) else idleHoldLabel("ok", false, true)
+        binding.sosBtn.text = if (!ok) sentHoldLabel("sos", false) else idleHoldLabel("sos", false, true)
+        binding.alertOkBtn.text = if (ok) sentHoldLabel("ok", true) else idleHoldLabel("ok", true, true)
+        binding.alertSosBtn.text = if (!ok) sentHoldLabel("sos", true) else idleHoldLabel("sos", true, true)
+    }
+
+    private fun idleHoldLabel(status: String, alert: Boolean, change: Boolean): String {
+        return when {
+            alert && status == "ok" && change -> "GREEN OK\nHold 3s to change"
+            alert && status == "sos" && change -> "RED SOS\nHold 3s to change"
+            alert && status == "ok" -> "GREEN OK\nHold 3s · Both crew OK"
+            alert && status == "sos" -> "RED SOS\nHold 3s · Need help"
+            status == "ok" && change -> "OK\nHold 3s to change"
+            status == "sos" && change -> "SOS\nHold 3s to change"
+            status == "ok" -> "OK\nHold 3s"
+            else -> "SOS\nHold 3s"
+        }
+    }
+
+    private fun sentHoldLabel(status: String, alert: Boolean): String {
+        return if (alert) {
+            if (status == "ok") "GREEN OK\nSent to race control" else "RED SOS\nSent to race control"
+        } else {
+            if (status == "ok") "OK\nSent to race control" else "SOS\nSent to race control"
+        }
+    }
+
+    private fun updateHoldButtonText(status: String, remainingMs: Long) {
+        val sec = ((remainingMs + 999) / 1000).coerceAtLeast(1)
+        val title = when {
+            crewAlertVisible && status == "ok" -> "GREEN OK"
+            crewAlertVisible && status == "sos" -> "RED SOS"
+            status == "ok" -> "OK"
+            else -> "SOS"
+        }
+        val text = "$title\nKeep holding ${sec}s"
+        when {
+            crewAlertVisible && status == "ok" -> binding.alertOkBtn.text = text
+            crewAlertVisible && status == "sos" -> binding.alertSosBtn.text = text
+            status == "ok" -> binding.okBtn.text = text
+            else -> binding.sosBtn.text = text
+        }
     }
 
     private fun sendFlagAck() {
@@ -535,8 +724,10 @@ class MainActivity : AppCompatActivity() {
         inStage = false
         sectionType = null
         sectionLabel = null
+        stageId = null
         hideCrewAlert()
         hideRedFlagAlert()
+        resetCrewStatusUi()
         renderMode()
     }
 
@@ -612,5 +803,9 @@ class MainActivity : AppCompatActivity() {
     companion object {
         private const val STOPPED_SPEED_MPS = 1.2f // ~4.3 km/h
         private const val STOPPED_ALERT_MS = 20_000L
+        private const val CREW_HOLD_MS = 3_000L
+        private const val STATE_CREW_STATUS = "crewStatusSent"
+        private const val STATE_IN_STAGE = "inStage"
+        private const val STATE_STAGE_ID = "stageId"
     }
 }

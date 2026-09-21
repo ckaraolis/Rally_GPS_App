@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#071015" />
+  <meta name="robots" content="noindex" />
+  <title>TEST MODE · Rally GPS</title>
+  <link rel="icon" href="/icons/icon.svg" type="image/svg+xml" />
+  <link rel="stylesheet" href="/css/app.css?v=testmode1" />
+</head>
+<body class="test-control-body test-mode">
+  <div class="tape" aria-hidden="true"></div>
+  <aside class="control-side">
+    <header>
+      <a class="back" href="/control-login.html">Sign in area</a>
+      <a class="back" href="/control.html">Live race control</a>
+      <p class="test-banner">TEST MODE · NOT LIVE</p>
+      <h1>Sandbox</h1>
+      <p class="lede tight">Demo stage, road, SOS and red flag. This never writes to live rally cars, GPS, or flags. Tap the preview once so the red-flag alarm can play.</p>
+    </header>
+
+    <div class="earth-box">
+      <p class="eyebrow">What the crew sees</p>
+      <div id="testStatus" class="test-status">
+        <div>Mode <span id="stMode">—</span></div>
+        <div>Flag <span id="stFlag">—</span></div>
+        <div>Crew <span id="stCrew">—</span></div>
+        <div>Red flag <span id="stAck">—</span></div>
+        <div>Motion <span id="stMotion">—</span></div>
+      </div>
+    </div>
+
+    <div class="earth-box">
+      <p class="eyebrow">Section</p>
+      <div class="test-actions">
+        <button type="button" class="btn btn-test" data-patch='{"mode":"road"}'>Road section</button>
+        <button type="button" class="btn btn-stop" data-patch='{"mode":"stage"}'>Stage mode</button>
+      </div>
+      <form id="nameForm" class="join-form" style="margin-top:12px">
+        <label>
+          Stage name
+          <input id="stageNameInput" maxlength="40" value="SS Test" />
+        </label>
+        <label>
+          Road name
+          <input id="roadNameInput" maxlength="40" value="Liaison Test" />
+        </label>
+        <button type="submit" class="btn btn-ghost">Apply names</button>
+      </form>
+    </div>
+
+    <div class="earth-box">
+      <p class="eyebrow">Race control flag</p>
+      <p class="hint">Red flag is stage-only. Tapping it puts the test car on stage, then the driver screen flashes + alarms until OK / CONFIRMED.</p>
+      <div class="test-actions">
+        <button type="button" class="btn btn-start" data-patch='{"flagStatus":"green"}'>Green flag</button>
+        <button type="button" class="btn btn-stop" data-patch='{"flagStatus":"red"}'>Red flag</button>
+      </div>
+    </div>
+
+    <div class="earth-box">
+      <p class="eyebrow">As if from the car</p>
+      <div class="test-actions">
+        <button type="button" class="btn btn-start" data-patch='{"crewStatus":"ok"}'>Send GREEN OK</button>
+        <button type="button" class="btn btn-stop" data-patch='{"crewStatus":"sos"}'>Send RED SOS</button>
+      </div>
+      <div class="test-actions" style="margin-top:8px">
+        <button type="button" class="btn btn-ghost" data-patch='{"motion":"moving"}'>Car moving</button>
+        <button type="button" class="btn btn-ghost" data-patch='{"motion":"stopped"}'>Car stopped</button>
+      </div>
+      <button type="button" class="btn btn-amber" style="margin-top:8px" data-patch='{"forceStoppedAlert":true}'>Show stopped OK/SOS now</button>
+    </div>
+
+    <div class="earth-box">
+      <p class="eyebrow">Reset</p>
+      <button type="button" class="btn btn-ghost" data-patch='{"reset":true}'>Reset sandbox</button>
+      <p class="hint">Open the preview in another tab to demo on a second screen. Same isolated test session — still not live.</p>
+      <a class="btn btn-test" href="/test-driver.html?test=1" target="_blank" rel="noopener">Open test driver</a>
+    </div>
+  </aside>
+  <div class="test-preview">
+    <iframe id="testDriverFrame" title="Test driver preview" src="/test-driver.html?test=1"></iframe>
+  </div>
+  <script src="/js/test.js?v=testmode2"></script>
+</body>
+</html>
