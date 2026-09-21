@@ -97,18 +97,7 @@ class RallyApi(baseUrl: String) {
                 throw IllegalStateException(json.optString("error", "Ping failed (${response.code})"))
             }
             val section = json.optJSONObject("section")
-            val flag = json.optString("flagStatus").ifBlank {
-                section?.optString("flagStatus").orEmpty()
-            }
-            return PingResult(
-                sectionType = section?.optString("type")?.ifBlank { null },
-                sectionName = section?.optString("name")?.ifBlank { null },
-                sectionLabel = section?.optString("label")?.ifBlank { null },
-                sectionId = section?.optString("id")?.ifBlank { null },
-                flagStatus = if (flag == "red") "red" else "green",
-                flagTs = json.optLong("flagTs", section?.optLong("flagTs", 0L) ?: 0L),
-                flagAcked = json.optBoolean("flagAcked", flag != "red")
-            )
+            return parsePingJson(json, section)
         }
     }
 
@@ -155,7 +144,7 @@ class RallyApi(baseUrl: String) {
         }
     }
 
-    fun poll(id: String, token: String): Boolean {
+    fun poll(id: String, token: String): PingResult {
         val payload = JSONObject()
             .put("id", id)
             .put("token", token)
@@ -173,7 +162,7 @@ class RallyApi(baseUrl: String) {
             if (!response.isSuccessful) {
                 throw IllegalStateException(json.optString("error", "Poll failed (${response.code})"))
             }
-            return json.optBoolean("reconnectRequested", false)
+            return parsePingJson(json, json.optJSONObject("section"))
         }
     }
 
@@ -196,5 +185,21 @@ class RallyApi(baseUrl: String) {
                 throw IllegalStateException(json.optString("error", "Stop failed (${response.code})"))
             }
         }
+    }
+
+    private fun parsePingJson(json: JSONObject, section: JSONObject?): PingResult {
+        val flag = json.optString("flagStatus").ifBlank {
+            section?.optString("flagStatus").orEmpty()
+        }
+        return PingResult(
+            sectionType = section?.optString("type")?.ifBlank { null },
+            sectionName = section?.optString("name")?.ifBlank { null },
+            sectionLabel = section?.optString("label")?.ifBlank { null },
+            sectionId = section?.optString("id")?.ifBlank { null },
+            flagStatus = if (flag == "red") "red" else "green",
+            flagTs = json.optLong("flagTs", section?.optLong("flagTs", 0L) ?: 0L),
+            flagAcked = json.optBoolean("flagAcked", flag != "red"),
+            reconnectRequested = json.optBoolean("reconnectRequested", false)
+        )
     }
 }

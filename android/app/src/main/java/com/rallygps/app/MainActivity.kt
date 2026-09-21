@@ -6,9 +6,10 @@ import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.content.pm.PackageManager
-import android.animation.ObjectAnimator
 import android.animation.ValueAnimator
 import android.graphics.Color
+import android.media.AudioAttributes
+import android.media.MediaPlayer
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
@@ -41,7 +42,8 @@ class MainActivity : AppCompatActivity() {
     private var stageFlagStatus = "green"
     private var stageFlagTs = 0L
     private var flagAcked = true
-    private var redFlagBlink: ObjectAnimator? = null
+    private var redFlagBlink: ValueAnimator? = null
+    private var flagPlayer: MediaPlayer? = null
 
     private val permissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
@@ -214,6 +216,12 @@ class MainActivity : AppCompatActivity() {
         super.onStop()
     }
 
+    override fun onDestroy() {
+        stopRedFlagSound()
+        stopRedFlagBlink()
+        super.onDestroy()
+    }
+
     private fun updateStopWatch(speed: Float?) {
         val moving = (speed ?: 0f) > STOPPED_SPEED_MPS
         if (moving) {
@@ -239,11 +247,14 @@ class MainActivity : AppCompatActivity() {
             hideRedFlagAlert()
             return
         }
-        if (flagTs != stageFlagTs || stageFlagStatus != "red") {
-            flagAcked = acked
-        }
+        val isNewEvent = flagTs != stageFlagTs || stageFlagStatus != "red"
         stageFlagStatus = "red"
         stageFlagTs = flagTs
+        if (isNewEvent) {
+            flagAcked = acked
+        } else if (acked) {
+            flagAcked = true
+        }
     }
 
     private fun shouldShowRedFlag(): Boolean {
@@ -257,7 +268,6 @@ class MainActivity : AppCompatActivity() {
         binding.trackPanel.visibility = View.GONE
         binding.stagePanel.visibility = View.GONE
         binding.setupPanel.visibility = View.GONE
-        binding.redFlagAlert.visibility = View.GONE
     }
 
     private fun hideCrewAlert() {
@@ -273,28 +283,74 @@ class MainActivity : AppCompatActivity() {
         binding.stagePanel.visibility = View.GONE
         binding.setupPanel.visibility = View.GONE
         startRedFlagBlink()
+        startRedFlagSound()
     }
 
     private fun hideRedFlagAlert() {
         redFlagVisible = false
         binding.redFlagAlert.visibility = View.GONE
         stopRedFlagBlink()
+        stopRedFlagSound()
     }
 
     private fun startRedFlagBlink() {
         if (redFlagBlink?.isRunning == true) return
-        redFlagBlink = ObjectAnimator.ofFloat(binding.redFlagTitle, View.ALPHA, 1f, 0.15f).apply {
-            duration = 400
+        redFlagBlink = ValueAnimator.ofArgb(
+            Color.parseColor("#7A0000"),
+            Color.parseColor("#FF1A1A")
+        ).apply {
+            duration = 550
             repeatMode = ValueAnimator.REVERSE
             repeatCount = ValueAnimator.INFINITE
+            addUpdateListener { animator ->
+                binding.redFlagAlert.setBackgroundColor(animator.animatedValue as Int)
+            }
             start()
         }
+        binding.redFlagTitle.alpha = 1f
     }
 
     private fun stopRedFlagBlink() {
         redFlagBlink?.cancel()
         redFlagBlink = null
         binding.redFlagTitle.alpha = 1f
+        binding.redFlagAlert.setBackgroundColor(Color.parseColor("#C80000"))
+    }
+
+    private fun startRedFlagSound() {
+        if (flagPlayer?.isPlaying == true) return
+        stopRedFlagSound()
+        try {
+            val player = MediaPlayer()
+            player.setAudioAttributes(
+                AudioAttributes.Builder()
+                    .setUsage(AudioAttributes.USAGE_ALARM)
+                    .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+                    .build()
+            )
+            val afd = resources.openRawResourceFd(R.raw.red_flag_alert)
+            player.setDataSource(afd.fileDescriptor, afd.startOffset, afd.length)
+            afd.close()
+            player.isLooping = true
+            player.setVolume(1f, 1f)
+            player.prepare()
+            player.start()
+            flagPlayer = player
+        } catch (_: Exception) {
+            flagPlayer = MediaPlayer.create(this, R.raw.red_flag_alert)?.apply {
+                isLooping = true
+                setVolume(1f, 1f)
+                start()
+            }
+        }
+    }
+
+    private fun stopRedFlagSound() {
+        flagPlayer?.run {
+            runCatching { if (isPlaying) stop() }
+            runCatching { release() }
+        }
+        flagPlayer = null
     }
 
     private fun updateRoadSectionUi() {

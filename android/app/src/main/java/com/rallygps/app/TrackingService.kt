@@ -209,8 +209,22 @@ class TrackingService : Service() {
         val current = session ?: return
         val client = api ?: return
         executor.execute {
-            runCatching { client.poll(current.id, current.token) }
-            handler.post { sendFreshFix() }
+            val poll = runCatching { client.poll(current.id, current.token) }.getOrNull()
+            handler.post {
+                if (poll != null) {
+                    broadcast(
+                        tracking = true,
+                        sectionType = poll.sectionType ?: "",
+                        sectionName = poll.sectionName,
+                        sectionLabel = poll.sectionLabel,
+                        sectionId = poll.sectionId,
+                        flagStatus = poll.flagStatus,
+                        flagTs = poll.flagTs,
+                        flagAcked = poll.flagAcked
+                    )
+                }
+                sendFreshFix()
+            }
         }
     }
 

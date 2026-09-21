@@ -19,6 +19,7 @@ const STOPPED_ALERT_MS = 20_000;
 const MAX_QUEUE = 2000;
 const MIN_QUEUE_METERS = 3;
 const MIN_QUEUE_MS = 4000;
+const FLAG_SOUND_SRC = "/audio/red-flag-alert.wav?v=1";
 
 let session = null;
 let watchId = null;
@@ -40,6 +41,9 @@ let stageFlagTs = 0;
 let flagAcked = true;
 let stoppedSinceMs = null;
 let acknowledgedStop = false;
+let flagAudio = null;
+let flagSoundWanted = false;
+let flagSoundRetryBound = false;
 
 if (!window.isSecureContext) {
   secureNote.textContent =
@@ -128,6 +132,71 @@ async function ackRedFlag() {
   }
 }
 
+function ensureFlagAudio() {
+  if (flagAudio) return flagAudio;
+  const audio = new Audio(FLAG_SOUND_SRC);
+  audio.loop = true;
+  audio.preload = "auto";
+  audio.playsInline = true;
+  audio.setAttribute("playsinline", "true");
+  flagAudio = audio;
+  return audio;
+}
+
+async function unlockFlagSound() {
+  const audio = ensureFlagAudio();
+  const wasWanted = flagSoundWanted;
+  try {
+    audio.muted = true;
+    audio.volume = 0;
+    await audio.play();
+    if (!wasWanted) {
+      audio.pause();
+      audio.currentTime = 0;
+    }
+    audio.muted = false;
+    audio.volume = 1;
+  } catch {
+    /* browsers need a later gesture */
+  }
+}
+
+async function startFlagSound() {
+  flagSoundWanted = true;
+  bindFlagSoundRetry();
+  const audio = ensureFlagAudio();
+  audio.loop = true;
+  audio.muted = false;
+  audio.volume = 1;
+  try {
+    await audio.play();
+  } catch {
+    /* retry on the next tap / key */
+  }
+}
+
+function stopFlagSound() {
+  flagSoundWanted = false;
+  if (!flagAudio) return;
+  try {
+    flagAudio.pause();
+    flagAudio.currentTime = 0;
+  } catch {
+    /* ignore */
+  }
+}
+
+function bindFlagSoundRetry() {
+  if (flagSoundRetryBound) return;
+  flagSoundRetryBound = true;
+  const retry = () => {
+    if (flagSoundWanted) startFlagSound();
+  };
+  document.addEventListener("pointerdown", retry, true);
+  document.addEventListener("keydown", retry, true);
+  document.addEventListener("touchstart", retry, { capture: true, passive: true });
+}
+
 function showTrack() {
   setupPanel.classList.add("hidden");
   trackPanel.classList.remove("hidden");
@@ -213,14 +282,17 @@ function showRedFlagAlert() {
   trackPanel.classList.add("hidden");
   stagePanel.classList.add("hidden");
   setupPanel.classList.add("hidden");
+  startFlagSound();
   updateBgNote();
 }
 
 function hideRedFlagAlert() {
   redFlagAlert.classList.add("hidden");
+  stopFlagSound();
 }
 
 function showCrewAlert() {
+  if (shouldShowRedFlag()) return;
   crewAlert.classList.remove("hidden");
   trackPanel.classList.add("hidden");
   stagePanel.classList.add("hidden");
@@ -270,6 +342,8 @@ async function startTracking() {
   await requestWakeLock();
   ensureGeoWatch();
   startBackgroundKeepalive();
+  await unlockFlagSound();
+  bindFlagSoundRetry();
   await requestTrackingNotification();
   flushQueue();
 }
@@ -338,6 +412,10 @@ async function pollReconnect() {
       return;
     }
     nudged = Boolean(data.reconnectRequested);
+    if (data.section !== undefined || data.flagStatus) {
+      applySectionAndFlag(data);
+      renderMode();
+    }
   } catch {
     if (lastFix) {
       try {
@@ -422,12 +500,20 @@ async function onFix(pos) {
 function applyPingResult(data, speed) {
   lastPingOkAt = Date.now();
   setLiveLamp();
+  applySectionAndFlag(data);
+  if (!shouldShowRedFlag()) updateStopWatch(speed);
+  renderMode();
+}
+
+function applySectionAndFlag(data) {
   const wasInStage = inStage;
-  sectionType = data.section?.type || null;
-  sectionLabel = data.section?.label || data.section?.name || null;
-  inStage = sectionType === "stage";
-  stageName = sectionLabel;
-  stageId = data.section?.id || null;
+  if (Object.prototype.hasOwnProperty.call(data, "section")) {
+    sectionType = data.section?.type || null;
+    sectionLabel = data.section?.label || data.section?.name || null;
+    inStage = sectionType === "stage";
+    stageName = sectionLabel;
+    stageId = data.section?.id || null;
+  }
   applyFlagFromServer(data);
   if (!wasInStage && inStage) {
     stoppedSinceMs = null;
@@ -442,8 +528,6 @@ function applyPingResult(data, speed) {
     stageFlagStatus = "green";
     flagAcked = true;
   }
-  updateStopWatch(speed);
-  renderMode();
 }
 
 function pointFromFix(pos) {
@@ -716,9 +800,18 @@ function clearTrackingNotification() {
   }
 }
 
-function applyFlagFromServer(data) {
-  const nextFlag = data.flagStatus === "red" || data.section?.flagStatus === "red" ? "red" : "green";
-  const nextTs = Number(data.flagTs || data.section?.flagTs || 0);
+function applyFlagFromServer(data, { ackSource = "server" } = {}) {
+  const nextFlag =
+    data.flagStatus === "red" || data.flagStatus === "green"
+      ? data.flagStatus
+      : data.section?.flagStatus === "red"
+        ? "red"
+        : "green";
+  const nextTs = Number(
+    data.flagTs != null && data.flagTs !== ""
+      ? data.flagTs
+      : data.section?.flagTs || 0
+  );
   if (nextFlag === "green") {
     stageFlagStatus = "green";
     stageFlagTs = nextTs;
@@ -726,11 +819,18 @@ function applyFlagFromServer(data) {
     hideRedFlagAlert();
     return;
   }
-  if (nextTs !== stageFlagTs || stageFlagStatus !== "red") {
-    flagAcked = data.flagAcked === true;
-  }
+  const isNewEvent = nextTs !== stageFlagTs || stageFlagStatus !== "red";
   stageFlagStatus = "red";
   stageFlagTs = nextTs;
+  if (ackSource === "sections") {
+    if (isNewEvent) flagAcked = false;
+    return;
+  }
+  if (isNewEvent) {
+    flagAcked = data.flagAcked === true;
+    return;
+  }
+  if (data.flagAcked === true) flagAcked = true;
 }
 
 async function pollStageFlag() {
@@ -740,12 +840,13 @@ async function pollStageFlag() {
     const data = await res.json();
     const section = (data.sections || []).find((s) => s.id === stageId);
     if (!section) return;
-    applyFlagFromServer({
-      flagStatus: section.flagStatus,
-      flagTs: section.flagTs,
-      flagAcked: false,
-      section,
-    });
+    applyFlagFromServer(
+      {
+        flagStatus: section.flagStatus === "red" ? "red" : "green",
+        flagTs: section.flagTs,
+      },
+      { ackSource: "sections" }
+    );
     renderMode();
   } catch {
     /* keep last known flag */

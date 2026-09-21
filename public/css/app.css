@@ -436,6 +436,8 @@ input {
   color: var(--amber);
   margin-top: 2px;
 }
+.car-list .flag-waiting { color: var(--stop); }
+.car-list .flag-acked { color: var(--go); }
 .file-btn {
   display: inline-flex;
   justify-content: center;
@@ -539,25 +541,51 @@ input {
 }
 .alert-btn { min-height: 110px; line-height: 1.2; }
 .red-flag-alert {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
   display: grid;
-  gap: 16px;
+  gap: 18px;
   place-content: center;
-  min-height: 70vh;
+  place-items: center;
+  min-height: 100dvh;
+  width: 100%;
   text-align: center;
-  padding: 24px 16px;
-  animation: redFlash 0.65s infinite alternate;
+  padding: max(24px, env(safe-area-inset-top)) max(20px, env(safe-area-inset-right)) max(28px, env(safe-area-inset-bottom)) max(20px, env(safe-area-inset-left));
+  animation: redFlash 0.55s infinite alternate;
 }
 .red-flag-alert h2 {
   margin: 0;
   color: #fff;
-  font-size: clamp(3.4rem, 16vw, 6rem);
-  letter-spacing: 0.08em;
-  line-height: 0.95;
+  font-size: clamp(4.2rem, 22vw, 8rem);
+  letter-spacing: 0.06em;
+  line-height: 0.88;
+  font-weight: 800;
+  text-shadow: 0 4px 0 rgba(0, 0, 0, 0.25);
 }
 .red-flag-alert p {
   margin: 0;
+  max-width: 22ch;
   color: #fff;
-  font-size: 1.3rem;
+  font-size: clamp(1.15rem, 4vw, 1.5rem);
+}
+.red-flag-alert .btn {
+  min-width: min(92vw, 420px);
+  min-height: 120px;
+  font-size: 2.2rem;
+  line-height: 1.05;
+  flex-direction: column;
+  gap: 4px;
+}
+.red-flag-alert .btn small {
+  display: block;
+  font-size: 0.95rem;
+  letter-spacing: 0.18em;
+  font-weight: 700;
+}
+.driver-body:has(#redFlagAlert:not(.hidden)) .tape,
+.driver-body:has(#crewAlert:not(.hidden)) .tape {
+  display: none;
 }
 @keyframes redFlash {
   from { background: #7a0000; }
@@ -1032,7 +1060,7 @@ img.kmz-ge-icon,
   .red-flag-alert {
     position: fixed;
     inset: 0;
-    z-index: 30;
+    z-index: 80;
     margin: 0;
     min-height: 100dvh;
     padding: 16px max(20px, env(safe-area-inset-right)) 16px max(20px, env(safe-area-inset-left));
@@ -1048,28 +1076,35 @@ img.kmz-ge-icon,
   .alert-btn { min-height: 88px; font-size: 1.2rem; }
 
   .red-flag-alert {
-    grid-template-columns: 1.3fr minmax(160px, 0.8fr);
+    grid-template-columns: minmax(0, 1.4fr) minmax(180px, 0.8fr);
     grid-template-areas:
       "title btn"
       "copy btn";
-    align-content: center;
+    align-content: stretch;
     align-items: center;
-    gap: 10px 18px;
+    justify-items: stretch;
+    gap: 8px 20px;
+    padding: 12px max(24px, env(safe-area-inset-right)) 12px max(24px, env(safe-area-inset-left));
   }
   .red-flag-alert h2 {
     grid-area: title;
-    font-size: clamp(2.4rem, 14vh, 4.4rem);
+    font-size: clamp(3.4rem, 18vh, 6.4rem);
+    text-align: left;
   }
-  .red-flag-alert p { grid-area: copy; font-size: 1.1rem; }
+  .red-flag-alert p {
+    grid-area: copy;
+    font-size: clamp(1rem, 3.4vh, 1.3rem);
+    text-align: left;
+    max-width: none;
+  }
   .red-flag-alert .btn {
     grid-area: btn;
-    min-height: 96px;
+    min-width: 0;
+    width: 100%;
+    min-height: 0;
     height: 100%;
-  }
-
-  .driver-body:has(#redFlagAlert:not(.hidden)) .tape,
-  .driver-body:has(#crewAlert:not(.hidden)) .tape {
-    display: none;
+    font-size: clamp(1.8rem, 8vh, 2.6rem);
+    flex-direction: column;
   }
 
   .control-body > .tape { height: 4px; }

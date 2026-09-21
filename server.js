@@ -226,14 +226,26 @@ function sectionFlag(section) {
   };
 }
 
+function liveSectionForCar(car, sections) {
+  if (!car?.section) return null;
+  if (!Array.isArray(sections) || !car.section.id) return car.section;
+  return sections.find((s) => s.id === car.section.id) || car.section;
+}
+
+function flagForCar(car, sections) {
+  const live = liveSectionForCar(car, sections);
+  return { ...sectionFlag(live), live };
+}
+
 function hasAckedFlag(car, section) {
   const { flagStatus, flagTs } = sectionFlag(section);
   if (flagStatus !== "red" || !section) return true;
   return car.flagAck?.stageId === section.id && Number(car.flagAck?.flagTs) === flagTs;
 }
 
-function serializeCar(car, { includeTrail = false } = {}) {
+function serializeCar(car, { includeTrail = false, sections = null } = {}) {
   const motion = carMotion(car);
+  const { flagStatus, live } = flagForCar(car, sections);
   return {
     id: car.id,
     carNumber: car.carNumber,
@@ -244,8 +256,8 @@ function serializeCar(car, { includeTrail = false } = {}) {
     last: car.last,
     section: car.section || null,
     crewStatus: car.crewStatus || null,
-    flagStatus: sectionFlag(car.section).flagStatus,
-    flagAcked: hasAckedFlag(car, car.section),
+    flagStatus,
+    flagAcked: hasAckedFlag(car, live),
     reconnectRequested: Boolean(car.reconnectRequested),
     motion,
     trailCount: Array.isArray(car.trail) ? car.trail.length : 0,
@@ -362,8 +374,8 @@ function applyFix(car, point, sections, { detect = true } = {}) {
   }
 }
 
-function pingPayload(car) {
-  const { flagStatus, flagTs } = sectionFlag(car.section);
+function pingPayload(car, sections) {
+  const { flagStatus, flagTs, live } = flagForCar(car, sections);
   return {
     ok: true,
     receivedAt: car.last?.ts || Date.now(),
@@ -371,7 +383,7 @@ function pingPayload(car) {
     crewStatus: car.crewStatus || null,
     flagStatus,
     flagTs,
-    flagAcked: hasAckedFlag(car, car.section),
+    flagAcked: hasAckedFlag(car, live),
   };
 }
 
@@ -453,7 +465,7 @@ app.post(
     applyFix(car, point, sections, { detect: true });
     car.reconnectRequested = null;
     await store.saveCar(car);
-    res.json(pingPayload(car));
+    res.json(pingPayload(car, sections));
   })
 );
 
@@ -483,7 +495,7 @@ app.post(
     }
     car.reconnectRequested = null;
     await store.saveCar(car);
-    res.json({ ...pingPayload(car), accepted: points.length });
+    res.json({ ...pingPayload(car, sections), accepted: points.length });
   })
 );
 
@@ -557,12 +569,13 @@ app.get(
       console.error("rally_events unavailable", err.message);
     }
     const mapOpen = Boolean(liveRally) || !ralliesReady || rallyCount === 0;
+    const { sections } = await liveSections();
     res.json({
       serverTime: Date.now(),
       ralliesReady,
       mapOpen,
       liveRally: rallySummary(liveRally),
-      cars: cars.map((car) => serializeCar(car)),
+      cars: cars.map((car) => serializeCar(car, { sections })),
     });
   })
 );
@@ -732,7 +745,8 @@ app.get(
   asyncHandler(async (req, res) => {
     const car = await store.getCar(req.params.id);
     if (!car) return res.status(404).json({ error: "Car not found." });
-    res.json(serializeCar(car, { includeTrail: true }));
+    const { sections } = await liveSections();
+    res.json(serializeCar(car, { includeTrail: true, sections }));
   })
 );
 
@@ -743,7 +757,8 @@ app.post(
     if (!car || car.token !== req.body.token) {
       return res.status(401).json({ error: "Unknown car session." });
     }
-    const { flagStatus, flagTs } = sectionFlag(car.section);
+    const { sections } = await liveSections();
+    const { flagStatus, flagTs, live } = flagForCar(car, sections);
     res.json({
       ok: true,
       tracking: car.tracking,
@@ -751,7 +766,7 @@ app.post(
       section: car.section || null,
       flagStatus,
       flagTs,
-      flagAcked: hasAckedFlag(car, car.section),
+      flagAcked: hasAckedFlag(car, live),
     });
   })
 );

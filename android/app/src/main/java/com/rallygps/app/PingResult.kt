@@ -7,5 +7,6 @@ data class PingResult(
     val sectionId: String? = null,
     val flagStatus: String = "green",
     val flagTs: Long = 0L,
-    val flagAcked: Boolean = true
+    val flagAcked: Boolean = true,
+    val reconnectRequested: Boolean = false
 )

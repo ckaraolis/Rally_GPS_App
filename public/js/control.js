@@ -969,7 +969,12 @@ function renderList(cars, { history = false } = {}) {
       const crew = car.crewStatus?.status;
       const crewLabel =
         crew === "sos" ? "RED SOS" : crew === "ok" ? "GREEN OK" : "";
-      const flagLabel = car.flagStatus === "red" ? " · RED FLAG" : "";
+      const flagLabel =
+        car.flagStatus === "red"
+          ? car.flagAcked
+            ? ' · <span class="flag-acked">RED FLAG ACKED</span>'
+            : ' · <span class="flag-waiting">RED FLAG WAITING</span>'
+          : "";
       const color = markerColor(car);
       const motionLabel =
         carMotion(car) === "sos" ? "SOS" : carMotion(car) === "moving" ? "MOVING" : "STOPPED";
