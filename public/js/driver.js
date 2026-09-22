@@ -1081,19 +1081,16 @@ function applyFlagFromServer(data, { ackSource = "server" } = {}) {
 }
 
 async function pollStageFlag() {
-  if (TEST_MODE || !tracking || !inStage || !stageId) return;
+  if (TEST_MODE || !tracking || !inStage || !stageId || !session) return;
   try {
-    const res = await fetch("/api/sections");
-    const data = await res.json();
-    const section = (data.sections || []).find((s) => s.id === stageId);
-    if (!section) return;
-    applyFlagFromServer(
-      {
-        flagStatus: section.flagStatus === "red" ? "red" : "green",
-        flagTs: section.flagTs,
-      },
-      { ackSource: "sections" }
-    );
+    const res = await fetch("/api/poll", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id: session.id, token: session.token }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) return;
+    applyFlagFromServer(data);
     renderMode();
   } catch {
     /* keep last known flag */

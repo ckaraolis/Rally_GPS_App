@@ -8,7 +8,7 @@
   <link rel="manifest" href="/manifest.json" />
   <link rel="icon" href="/icons/icon.svg" type="image/svg+xml" />
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-  <link rel="stylesheet" href="/css/app.css?v=testmode1" />
+  <link rel="stylesheet" href="/css/app.css?v=flagtarget1" />
 </head>
 <body class="control-body">
   <div class="tape" aria-hidden="true"></div>
@@ -98,7 +98,27 @@
     </section>
   </aside>
   <div id="map" class="control-map"></div>
+
+  <div id="redFlagModal" class="flag-modal hidden" role="dialog" aria-modal="true" aria-labelledby="redFlagModalTitle" hidden>
+    <div class="flag-modal-card">
+      <h2 id="redFlagModalTitle">Red flag targets</h2>
+      <p id="redFlagModalStage" class="hint"></p>
+      <p class="hint">Only checked cars get the full-screen red flag. Cars ahead can be left unchecked.</p>
+      <div class="flag-modal-tools">
+        <button type="button" class="mini-toggle" id="flagSelectAll">Select all</button>
+        <button type="button" class="mini-toggle" id="flagSelectNone">Clear</button>
+        <button type="button" class="mini-toggle" id="flagSelectBehindSos" hidden>Behind SOS</button>
+      </div>
+      <ul id="redFlagCarList" class="car-list flag-target-list"></ul>
+      <p id="redFlagModalError" class="hint flag-modal-error" hidden></p>
+      <div class="flag-modal-actions">
+        <button type="button" class="btn btn-ghost" id="redFlagCancel">Cancel</button>
+        <button type="button" class="btn btn-stop" id="redFlagConfirm">Send red flag</button>
+      </div>
+    </div>
+  </div>
+
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-  <script src="/js/control.js?v=redflag1"></script>
+  <script src="/js/control.js?v=flagtarget1"></script>
 </body>
 </html>

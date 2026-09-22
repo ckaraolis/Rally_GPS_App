@@ -2,7 +2,7 @@ const crypto = require("crypto");
 const os = require("os");
 const path = require("path");
 const express = require("express");
-const { getStore, hasSupabase, pickColor, newToken, PALETTE, rallySummary } = require("./lib/store");
+const { getStore, hasSupabase, pickColor, newToken, PALETTE, rallySummary, normalizeFlagTargets } = require("./lib/store");
 const auth = require("./lib/auth");
 const testSession = require("./lib/testSession");
 const { parseKmzOrKml, buildLabel, classifyPinKind } = require("./lib/kml");
@@ -208,6 +208,12 @@ const MOTION_COLORS = {
   stopped: "#3d7dff",
 };
 
+const MOTION_KML_ICONS = {
+  sos: "http://maps.google.com/mapfiles/kml/paddle/red-circle.png",
+  moving: "http://maps.google.com/mapfiles/kml/paddle/grn-circle.png",
+  stopped: "http://maps.google.com/mapfiles/kml/paddle/blu-circle.png",
+};
+
 function carMotion(car) {
   if (car.crewStatus?.status === "sos") return "sos";
   const speed = Number(car.last?.speed);
@@ -219,6 +225,10 @@ function motionColor(motion) {
   return MOTION_COLORS[motion] || MOTION_COLORS.stopped;
 }
 
+function motionKmlIcon(motion) {
+  return MOTION_KML_ICONS[motion] || MOTION_KML_ICONS.stopped;
+}
+
 function reviveLastFix(car) {
   car.reconnectRequested = Date.now();
   car.tracking = true;
@@ -228,10 +238,11 @@ function reviveLastFix(car) {
 }
 
 function sectionFlag(section) {
-  if (!section || section.type !== "stage") return { flagStatus: "green", flagTs: 0 };
+  if (!section || section.type !== "stage") return { flagStatus: "green", flagTs: 0, flagTargets: [] };
   return {
     flagStatus: section.flagStatus === "red" ? "red" : "green",
     flagTs: Number(section.flagTs) || 0,
+    flagTargets: normalizeFlagTargets(section.flagTargets),
   };
 }
 
@@ -241,14 +252,25 @@ function liveSectionForCar(car, sections) {
   return sections.find((s) => s.id === car.section.id) || car.section;
 }
 
+function isFlagAudience(car, section) {
+  if (!car || !section || section.type !== "stage" || section.flagStatus !== "red") return false;
+  const targets = normalizeFlagTargets(section.flagTargets);
+  if (!targets.length) return false;
+  return targets.includes(String(car.id));
+}
+
 function flagForCar(car, sections) {
   const live = liveSectionForCar(car, sections);
-  return { ...sectionFlag(live), live };
+  const base = sectionFlag(live);
+  if (base.flagStatus === "red" && !isFlagAudience(car, live)) {
+    return { flagStatus: "green", flagTs: base.flagTs, flagTargets: base.flagTargets, live, flagTargeted: false };
+  }
+  return { ...base, live, flagTargeted: base.flagStatus === "red" };
 }
 
 function hasAckedFlag(car, section) {
   const { flagStatus, flagTs } = sectionFlag(section);
-  if (flagStatus !== "red" || !section) return true;
+  if (flagStatus !== "red" || !section || !isFlagAudience(car, section)) return true;
   return car.flagAck?.stageId === section.id && Number(car.flagAck?.flagTs) === flagTs;
 }
 
@@ -574,7 +596,7 @@ app.post(
     const { sections } = await liveSections();
     const live = sections.find((s) => s.id === car.section?.id) || car.section;
     const { flagStatus, flagTs } = sectionFlag(live);
-    if (!live || live.type !== "stage" || flagStatus !== "red") {
+    if (!live || live.type !== "stage" || flagStatus !== "red" || !isFlagAudience(car, live)) {
       return res.status(400).json({ error: "This car is not on a red-flagged stage." });
     }
     car.flagAck = { stageId: live.id, flagTs, ts: Date.now() };
@@ -991,6 +1013,7 @@ app.patch(
       if (type === "road") {
         patch.flagStatus = "green";
         patch.flagTs = Date.now();
+        patch.flagTargets = [];
       }
     }
     if (typeof req.body.active === "boolean") patch.active = req.body.active;
@@ -998,7 +1021,29 @@ app.patch(
       if (req.body.flagStatus === "red" && current && current.type !== "stage") {
         return res.status(400).json({ error: "Only special stages can be red-flagged." });
       }
-      patch.flagStatus = req.body.flagStatus;
+      if (req.body.flagStatus === "red") {
+        const targets = normalizeFlagTargets(req.body.flagTargets);
+        if (!targets.length) {
+          return res.status(400).json({
+            error: "Select at least one car to receive the red flag.",
+          });
+        }
+        patch.flagStatus = "red";
+        patch.flagTs = Date.now();
+        patch.flagTargets = targets;
+      } else {
+        patch.flagStatus = "green";
+        patch.flagTs = Date.now();
+        patch.flagTargets = [];
+      }
+    } else if (Object.prototype.hasOwnProperty.call(req.body, "flagTargets") && current?.flagStatus === "red") {
+      const targets = normalizeFlagTargets(req.body.flagTargets);
+      if (!targets.length) {
+        return res.status(400).json({
+          error: "Select at least one car to receive the red flag.",
+        });
+      }
+      patch.flagTargets = targets;
       patch.flagTs = Date.now();
     }
     const updated = await store.updateSection(req.params.id, patch);
@@ -1110,9 +1155,8 @@ function buildLiveKml(cars, sections = [], pinIcons = {}) {
   const styles = PALETTE.map(
     (color, i) => `    <Style id="car${i}">
       <IconStyle>
-        <color>${kmlColor(color)}</color>
-        <scale>1.3</scale>
-        <Icon><href>http://maps.google.com/mapfiles/kml/shapes/track.png</href></Icon>
+        <scale>1.1</scale>
+        <Icon><href>http://maps.google.com/mapfiles/kml/paddle/wht-circle.png</href></Icon>
         <hotSpot x="0.5" y="0.5" xunits="fraction" yunits="fraction"/>
       </IconStyle>
       <LabelStyle>
@@ -1148,8 +1192,7 @@ ${buildKmlPinStyle("pinStyle", "http://maps.google.com/mapfiles/kml/paddle/ylw-b
       const speedKmh =
         car.last.speed == null ? "—" : `${Math.round(car.last.speed * 3.6)} km/h`;
       const ageSec = Math.max(0, Math.round((Date.now() - car.last.ts) / 1000));
-      const headingTag =
-        car.last.heading == null ? "" : `<heading>${xml(car.last.heading)}</heading>`;
+      const motion = carMotion(car);
       const sectionLabel = car.section?.label ? `<br/>${car.section.label}` : "";
       const status = live ? "LIVE" : car.tracking ? "SIGNAL LOST" : "STOPPED";
       return `      <Placemark>
@@ -1157,10 +1200,8 @@ ${buildKmlPinStyle("pinStyle", "http://maps.google.com/mapfiles/kml/paddle/ylw-b
         <description><![CDATA[${status}<br/>Speed: ${speedKmh}<br/>Updated: ${ageSec}s ago${sectionLabel}]]></description>
         <Style>
           <IconStyle>
-            <color>${kmlColor(motionColor(carMotion(car)))}</color>
-            <scale>1.3</scale>
-            ${headingTag}
-            <Icon><href>http://maps.google.com/mapfiles/kml/shapes/track.png</href></Icon>
+            <scale>1.1</scale>
+            <Icon><href>${motionKmlIcon(motion)}</href></Icon>
             <hotSpot x="0.5" y="0.5" xunits="fraction" yunits="fraction"/>
           </IconStyle>
           <LabelStyle>

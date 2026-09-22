@@ -7,7 +7,7 @@
   <meta name="robots" content="noindex" />
   <title>TEST MODE · Rally GPS</title>
   <link rel="icon" href="/icons/icon.svg" type="image/svg+xml" />
-  <link rel="stylesheet" href="/css/app.css?v=testmode1" />
+  <link rel="stylesheet" href="/css/app.css?v=testmode2" />
 </head>
 <body class="test-control-body test-mode">
   <div class="tape" aria-hidden="true"></div>
@@ -17,7 +17,7 @@
       <a class="back" href="/control.html">Live race control</a>
       <p class="test-banner">TEST MODE · NOT LIVE</p>
       <h1>Sandbox</h1>
-      <p class="lede tight">Demo stage, road, SOS and red flag. This never writes to live rally cars, GPS, or flags. Tap the preview once so the red-flag alarm can play.</p>
+      <p class="lede tight">Demo stage, road, SOS and selective red flag. This never writes to live rally cars, GPS, or flags. Tap the preview once so the red-flag alarm can play.</p>
     </header>
 
     <div class="earth-box">
@@ -25,6 +25,8 @@
       <div id="testStatus" class="test-status">
         <div>Mode <span id="stMode">—</span></div>
         <div>Flag <span id="stFlag">—</span></div>
+        <div>Targets <span id="stTargets">—</span></div>
+        <div>Preview <span id="stPreview">—</span></div>
         <div>Crew <span id="stCrew">—</span></div>
         <div>Red flag <span id="stAck">—</span></div>
         <div>Motion <span id="stMotion">—</span></div>
@@ -51,11 +53,20 @@
     </div>
 
     <div class="earth-box">
+      <p class="eyebrow">Preview car</p>
+      <p class="hint">The iframe acts as the selected sandbox car. Switch cars to see who gets the red-flag flash.</p>
+      <label class="join-form" style="margin:0">
+        Bind preview to
+        <select id="previewCarSelect"></select>
+      </label>
+    </div>
+
+    <div class="earth-box">
       <p class="eyebrow">Race control flag</p>
-      <p class="hint">Red flag is stage-only. Tapping it puts the test car on stage, then the driver screen flashes + alarms until OK / CONFIRMED.</p>
+      <p class="hint">Red flag opens a car picker (same idea as live control). Demo cars: #1 ahead, #2 SOS mid-stage, #3 behind. Uncheck #1 to flag only cars behind the SOS.</p>
       <div class="test-actions">
         <button type="button" class="btn btn-start" data-patch='{"flagStatus":"green"}'>Green flag</button>
-        <button type="button" class="btn btn-stop" data-patch='{"flagStatus":"red"}'>Red flag</button>
+        <button type="button" class="btn btn-stop" id="redFlagBtn">Red flag</button>
       </div>
     </div>
 
@@ -82,6 +93,26 @@
   <div class="test-preview">
     <iframe id="testDriverFrame" title="Test driver preview" src="/test-driver?test=1"></iframe>
   </div>
-  <script src="/js/test.js?v=testmode2"></script>
+
+  <div id="redFlagModal" class="flag-modal hidden" role="dialog" aria-modal="true" aria-labelledby="redFlagModalTitle" hidden>
+    <div class="flag-modal-card">
+      <h2 id="redFlagModalTitle">Red flag targets</h2>
+      <p id="redFlagModalStage" class="hint"></p>
+      <p class="hint">Only checked cars get the full-screen red flag. Cars ahead can be left unchecked.</p>
+      <div class="flag-modal-tools">
+        <button type="button" class="mini-toggle" id="flagSelectAll">Select all</button>
+        <button type="button" class="mini-toggle" id="flagSelectNone">Clear</button>
+        <button type="button" class="mini-toggle" id="flagSelectBehindSos">Behind SOS</button>
+      </div>
+      <ul id="redFlagCarList" class="car-list flag-target-list"></ul>
+      <p id="redFlagModalError" class="hint flag-modal-error" hidden></p>
+      <div class="flag-modal-actions">
+        <button type="button" class="btn btn-ghost" id="redFlagCancel">Cancel</button>
+        <button type="button" class="btn btn-stop" id="redFlagConfirm">Send red flag</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="/js/test.js?v=testmode3"></script>
 </body>
 </html>

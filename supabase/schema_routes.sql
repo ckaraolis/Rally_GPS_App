@@ -26,6 +26,9 @@ alter table rally_sections
 alter table rally_sections
   add column if not exists flag_ts bigint not null default 0;
 
+alter table rally_sections
+  add column if not exists flag_targets jsonb not null default '[]'::jsonb;
+
 alter table rally_cars
   add column if not exists flag_ack jsonb;
 

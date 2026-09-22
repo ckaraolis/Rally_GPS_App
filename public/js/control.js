@@ -588,6 +588,7 @@ function renderSections(sections) {
       const isPin = isKmzPin(section);
       const kind = isPin ? pinCaption(section).toUpperCase() : section.type === "stage" ? "STAGE" : "ROAD";
       const flag = section.flagStatus === "red" ? "red" : "green";
+      const targetCount = Array.isArray(section.flagTargets) ? section.flagTargets.length : 0;
       const flagButtons = isPin
         ? ""
         : section.type === "stage"
@@ -601,7 +602,7 @@ function renderSections(sections) {
         ${listIconHtml(section)}
         <div>
           <strong>${escapeHtml(section.name)}</strong>
-          <small>${kind}${!isPin && section.type === "stage" ? ` · ${flag === "red" ? "RED FLAG" : "GREEN FLAG"}` : ""}</small>
+          <small>${kind}${!isPin && section.type === "stage" ? ` · ${flag === "red" ? `RED FLAG${targetCount ? ` · ${targetCount} car${targetCount === 1 ? "" : "s"}` : ""}` : "GREEN FLAG"}` : ""}</small>
           ${flagButtons}
         </div>
       </li>`;
@@ -627,10 +628,14 @@ function renderSections(sections) {
       event.stopPropagation();
       const id = btn.getAttribute("data-id");
       const flagStatus = btn.getAttribute("data-flag");
+      if (flagStatus === "red") {
+        openRedFlagPicker(id);
+        return;
+      }
       await fetch(`/api/sections/${id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ flagStatus }),
+        body: JSON.stringify({ flagStatus: "green" }),
       });
       await refreshSections();
     });
@@ -649,6 +654,280 @@ function renderSections(sections) {
     });
   }
 }
+
+const redFlagModal = document.getElementById("redFlagModal");
+const redFlagCarList = document.getElementById("redFlagCarList");
+const redFlagModalStage = document.getElementById("redFlagModalStage");
+const redFlagModalError = document.getElementById("redFlagModalError");
+const flagSelectBehindSos = document.getElementById("flagSelectBehindSos");
+let pendingFlagSectionId = null;
+let pendingFlagCandidates = [];
+
+function haversineMetersClient(a, b) {
+  const toRad = (d) => (d * Math.PI) / 180;
+  const R = 6371000;
+  const dLat = toRad(b.lat - a.lat);
+  const dLon = toRad(b.lon - a.lon);
+  const lat1 = toRad(a.lat);
+  const lat2 = toRad(b.lat);
+  const h =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLon / 2) ** 2;
+  return 2 * R * Math.asin(Math.min(1, Math.sqrt(h)));
+}
+
+function progressAlongPathClient(point, coords, maxDistM = 200) {
+  if (!point || !coords || coords.length < 2) return null;
+  const segLens = [];
+  let total = 0;
+  for (let i = 0; i < coords.length - 1; i++) {
+    const len = haversineMetersClient(coords[i], coords[i + 1]);
+    segLens.push(len);
+    total += len;
+  }
+  if (total < 1) return null;
+  let bestDist = Infinity;
+  let bestAlong = 0;
+  let alongBase = 0;
+  const toLocalXY = (lat, lon, refLat) => {
+    const toRad = (d) => (d * Math.PI) / 180;
+    return {
+      x: toRad(lon) * Math.cos(toRad(refLat)) * 6371000,
+      y: toRad(lat) * 6371000,
+    };
+  };
+  for (let i = 0; i < coords.length - 1; i++) {
+    const a = coords[i];
+    const b = coords[i + 1];
+    const P = toLocalXY(point.lat, point.lon, point.lat);
+    const A = toLocalXY(a.lat, a.lon, point.lat);
+    const B = toLocalXY(b.lat, b.lon, point.lat);
+    const abx = B.x - A.x;
+    const aby = B.y - A.y;
+    const ab2 = abx * abx + aby * aby;
+    let t = 0;
+    if (ab2 >= 1e-6) {
+      t = Math.max(0, Math.min(1, ((P.x - A.x) * abx + (P.y - A.y) * aby) / ab2));
+    }
+    const closest = {
+      lat: a.lat + (b.lat - a.lat) * t,
+      lon: a.lon + (b.lon - a.lon) * t,
+    };
+    const dist = haversineMetersClient(point, closest);
+    if (dist < bestDist) {
+      bestDist = dist;
+      bestAlong = alongBase + segLens[i] * t;
+    }
+    alongBase += segLens[i];
+  }
+  if (bestDist > maxDistM) return null;
+  return { fraction: bestAlong / total, alongM: Math.round(bestAlong) };
+}
+
+function carsOnStage(sectionId) {
+  return (latestCars || []).filter(
+    (car) => car.section?.id === sectionId && car.section?.type === "stage"
+  );
+}
+
+function buildFlagCandidates(section) {
+  const onStage = carsOnStage(section.id);
+  const coords = Array.isArray(section.coordinates) ? section.coordinates : [];
+  const sosCars = onStage.filter((car) => car.crewStatus?.status === "sos");
+  const sosProgress = sosCars
+    .map((car) => {
+      if (!car.last) return null;
+      return progressAlongPathClient(car.last, coords);
+    })
+    .filter(Boolean)
+    .map((p) => p.fraction);
+  const sosCut = sosProgress.length ? Math.min(...sosProgress) : null;
+  const onStageIds = new Set(onStage.map((car) => car.id));
+
+  const rows = onStage.map((car) => {
+    const progress =
+      car.last && coords.length >= 2 ? progressAlongPathClient(car.last, coords) : null;
+    const aheadOfSos =
+      sosCut != null && progress != null ? progress.fraction > sosCut + 0.02 : false;
+    return {
+      id: car.id,
+      carNumber: car.carNumber,
+      driverName: car.driverName,
+      crewStatus: car.crewStatus?.status || null,
+      progress,
+      aheadOfSos,
+      onStage: true,
+      selected: !aheadOfSos,
+    };
+  });
+
+  const others = (latestCars || []).filter(
+    (car) => car.tracking && !onStageIds.has(car.id)
+  );
+  for (const car of others) {
+    rows.push({
+      id: car.id,
+      carNumber: car.carNumber,
+      driverName: car.driverName,
+      crewStatus: car.crewStatus?.status || null,
+      progress: null,
+      aheadOfSos: false,
+      onStage: false,
+      selected: false,
+    });
+  }
+
+  rows.sort((a, b) => {
+    if (a.onStage !== b.onStage) return a.onStage ? -1 : 1;
+    const pa = a.progress?.fraction;
+    const pb = b.progress?.fraction;
+    if (pa == null && pb == null) {
+      return String(a.carNumber).localeCompare(String(b.carNumber), undefined, { numeric: true });
+    }
+    if (pa == null) return 1;
+    if (pb == null) return -1;
+    return pa - pb;
+  });
+
+  return { rows, hasSosCut: sosCut != null, sosCount: sosCars.length };
+}
+
+function setFlagModalError(message) {
+  if (!redFlagModalError) return;
+  if (!message) {
+    redFlagModalError.hidden = true;
+    redFlagModalError.textContent = "";
+    return;
+  }
+  redFlagModalError.hidden = false;
+  redFlagModalError.textContent = message;
+}
+
+function renderFlagCandidateList() {
+  if (!redFlagCarList) return;
+  if (!pendingFlagCandidates.length) {
+    redFlagCarList.innerHTML = `<li class="empty">No tracking cars available to target.</li>`;
+    return;
+  }
+  redFlagCarList.innerHTML = pendingFlagCandidates
+    .map((row) => {
+      const where = row.onStage
+        ? row.progress != null
+          ? `On stage · ~${Math.round(row.progress.fraction * 100)}%`
+          : "On stage"
+        : "Not on this stage";
+      const crew =
+        row.crewStatus === "sos" ? " · RED SOS" : row.crewStatus === "ok" ? " · GREEN OK" : "";
+      const ahead = row.aheadOfSos ? " · ahead of SOS" : "";
+      return `<li class="flag-target-row">
+        <input type="checkbox" id="flagCar_${escapeHtml(row.id)}" data-car-id="${escapeHtml(
+          row.id
+        )}" ${row.selected ? "checked" : ""} />
+        <label for="flagCar_${escapeHtml(row.id)}">
+          <strong>#${escapeHtml(row.carNumber)} ${escapeHtml(row.driverName)}</strong>
+          <small>${where}${crew}${ahead}</small>
+        </label>
+      </li>`;
+    })
+    .join("");
+
+  for (const input of redFlagCarList.querySelectorAll("input[data-car-id]")) {
+    input.addEventListener("change", () => {
+      const id = input.getAttribute("data-car-id");
+      const row = pendingFlagCandidates.find((c) => c.id === id);
+      if (row) row.selected = input.checked;
+      setFlagModalError("");
+    });
+  }
+}
+
+function openRedFlagPicker(sectionId) {
+  const section = allSections.find((s) => s.id === sectionId);
+  if (!section || section.type !== "stage") return;
+  pendingFlagSectionId = sectionId;
+  const built = buildFlagCandidates(section);
+  pendingFlagCandidates = built.rows;
+  const existingTargets = new Set(
+    Array.isArray(section.flagTargets) ? section.flagTargets.map(String) : []
+  );
+  if (section.flagStatus === "red" && existingTargets.size) {
+    pendingFlagCandidates.forEach((row) => {
+      row.selected = existingTargets.has(String(row.id));
+    });
+  }
+  if (redFlagModalStage) {
+    redFlagModalStage.textContent = `${section.name || "Stage"} · choose which cars see RED FLAG`;
+  }
+  if (flagSelectBehindSos) {
+    flagSelectBehindSos.hidden = !built.hasSosCut;
+  }
+  setFlagModalError("");
+  renderFlagCandidateList();
+  if (redFlagModal) {
+    redFlagModal.hidden = false;
+    redFlagModal.classList.remove("hidden");
+  }
+}
+
+function closeRedFlagPicker() {
+  pendingFlagSectionId = null;
+  pendingFlagCandidates = [];
+  if (redFlagModal) {
+    redFlagModal.hidden = true;
+    redFlagModal.classList.add("hidden");
+  }
+  setFlagModalError("");
+}
+
+async function confirmRedFlag() {
+  if (!pendingFlagSectionId) return;
+  const targets = pendingFlagCandidates.filter((c) => c.selected).map((c) => c.id);
+  if (!targets.length) {
+    setFlagModalError("Select at least one car, or cancel.");
+    return;
+  }
+  const res = await fetch(`/api/sections/${pendingFlagSectionId}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ flagStatus: "red", flagTargets: targets }),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    setFlagModalError(data.error || "Could not set red flag.");
+    return;
+  }
+  closeRedFlagPicker();
+  await refreshSections();
+  await refresh();
+}
+
+document.getElementById("redFlagCancel")?.addEventListener("click", closeRedFlagPicker);
+document.getElementById("redFlagConfirm")?.addEventListener("click", () => {
+  confirmRedFlag().catch(() => setFlagModalError("Could not set red flag."));
+});
+document.getElementById("flagSelectAll")?.addEventListener("click", () => {
+  pendingFlagCandidates.forEach((c) => {
+    c.selected = true;
+  });
+  renderFlagCandidateList();
+  setFlagModalError("");
+});
+document.getElementById("flagSelectNone")?.addEventListener("click", () => {
+  pendingFlagCandidates.forEach((c) => {
+    c.selected = false;
+  });
+  renderFlagCandidateList();
+});
+flagSelectBehindSos?.addEventListener("click", () => {
+  pendingFlagCandidates.forEach((c) => {
+    c.selected = !c.aheadOfSos;
+  });
+  renderFlagCandidateList();
+  setFlagModalError("");
+});
+redFlagModal?.addEventListener("click", (event) => {
+  if (event.target === redFlagModal) closeRedFlagPicker();
+});
 
 function isKmzPin(section) {
   return (

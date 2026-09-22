@@ -673,6 +673,75 @@ input {
   color: var(--stop);
 }
 
+.flag-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 5000;
+  display: grid;
+  place-items: center;
+  padding: 16px;
+  background: rgba(8, 9, 7, 0.82);
+}
+.flag-modal.hidden,
+.flag-modal[hidden] {
+  display: none !important;
+}
+.flag-modal-card {
+  width: min(440px, 100%);
+  max-height: min(88vh, 720px);
+  overflow: auto;
+  background: #161714;
+  border: 1px solid var(--line);
+  padding: 18px;
+  display: grid;
+  gap: 12px;
+}
+.flag-modal-card h2 {
+  margin: 0;
+  font-size: 1.35rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--stop);
+}
+.flag-modal-tools,
+.flag-modal-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.flag-modal-actions {
+  justify-content: flex-end;
+  margin-top: 4px;
+}
+.flag-target-list {
+  max-height: 42vh;
+  overflow: auto;
+  margin: 0;
+}
+.flag-target-list .flag-target-row {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 10px;
+  align-items: start;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--line);
+}
+.flag-target-list .flag-target-row:last-child {
+  border-bottom: none;
+}
+.flag-target-list label {
+  cursor: pointer;
+}
+.flag-target-list input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+  margin-top: 4px;
+  accent-color: var(--stop);
+}
+.flag-modal-error {
+  color: var(--stop) !important;
+}
+
 
 
 .rally-form { display: grid; gap: 10px; }
@@ -1318,6 +1387,15 @@ body.test-mode::before {
   font-size: 0.95rem;
 }
 .test-status span { color: var(--test); }
+.test-control-body select {
+  width: 100%;
+  padding: 14px 12px;
+  border: 1px solid var(--line);
+  background: #0c0d0b;
+  color: var(--ink);
+  font-family: var(--mono);
+  font-size: 1.15rem;
+}
 .test-actions {
   display: grid;
   grid-template-columns: 1fr 1fr;
