@@ -14,7 +14,7 @@ object FixQueue {
     private const val KEY = "fix_queue"
     private const val MAX = 2500
     private const val MIN_METERS = 3.0
-    private const val MIN_INTERVAL_MS = 4000L
+    private const val MIN_INTERVAL_MS = 2000L
 
     data class Fix(
         val lat: Double,

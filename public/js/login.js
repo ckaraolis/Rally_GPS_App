@@ -8,8 +8,12 @@ const changeError = document.getElementById("changeError");
 
 function safeControlNext() {
   const next = new URLSearchParams(location.search).get("next");
-  if (next === "/test.html") return "/test.html";
+  if (next === "/test" || next === "/test.html") return "/test";
   return "/control.html";
+}
+
+function isTestNext() {
+  return safeControlNext() === "/test";
 }
 
 function showError(el, message) {
@@ -24,9 +28,8 @@ function showChange() {
 }
 
 function showSignedIn() {
-  const next = safeControlNext();
-  if (next === "/test.html") {
-    location.replace("/test.html");
+  if (isTestNext()) {
+    location.replace("/test");
     return;
   }
   loginPanel.classList.add("hidden");
@@ -42,8 +45,8 @@ fetch("/api/me")
   .then((res) => (res.ok ? res.json() : null))
   .then((data) => {
     if (!data) return;
-    if (data.mustChangePassword && safeControlNext() !== "/test.html") showChange();
-    else if (data.mustChangePassword && safeControlNext() === "/test.html") location.replace("/test.html");
+    if (data.mustChangePassword && !isTestNext()) showChange();
+    else if (data.mustChangePassword && isTestNext()) location.replace("/test");
     else showSignedIn();
   })
   .catch(() => {});
@@ -63,8 +66,8 @@ loginForm.addEventListener("submit", async (event) => {
     const data = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(data.error || "Could not sign in");
     if (data.mustChangePassword) {
-      if (safeControlNext() === "/test.html") {
-        location.replace("/test.html");
+      if (isTestNext()) {
+        location.replace("/test");
         return;
       }
       document.getElementById("currentPassword").value = document.getElementById("password").value;

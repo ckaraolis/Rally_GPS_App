@@ -8,6 +8,18 @@
   ],
   "routes": [
     {
+      "src": "/test/?$",
+      "dest": "/api/index.js"
+    },
+    {
+      "src": "/test-driver/?$",
+      "dest": "/api/index.js"
+    },
+    {
+      "src": "/control/?$",
+      "dest": "/api/index.js"
+    },
+    {
       "src": "/(.*)",
       "dest": "/api/index.js"
     }

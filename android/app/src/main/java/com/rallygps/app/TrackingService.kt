@@ -43,7 +43,7 @@ class TrackingService : Service() {
     private val pollRunnable = object : Runnable {
         override fun run() {
             pollAndRefresh()
-            handler.postDelayed(this, 4000L)
+            handler.postDelayed(this, 2000L)
         }
     }
 
@@ -161,7 +161,7 @@ class TrackingService : Service() {
             fused.requestLocationUpdates(request, locationCallback, Looper.getMainLooper())
             broadcast(tracking = true)
             handler.removeCallbacks(pollRunnable)
-            handler.postDelayed(pollRunnable, 4000L)
+            handler.postDelayed(pollRunnable, 2000L)
             executor.execute { flushQueue() }
         } catch (error: SecurityException) {
             running = false

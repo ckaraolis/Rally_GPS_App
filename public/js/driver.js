@@ -18,13 +18,13 @@ const STOPPED_SPEED_MPS = 1.2;
 const STOPPED_ALERT_MS = 20_000;
 const MAX_QUEUE = 2000;
 const MIN_QUEUE_METERS = 3;
-const MIN_QUEUE_MS = 4000;
+const MIN_QUEUE_MS = 2000;
 const FLAG_SOUND_SRC = "/audio/red-flag-alert.wav?v=1";
 const CREW_HOLD_MS = 3000;
 
 function isRallyTestPage() {
   const path = String(location.pathname || "");
-  if (!/\/test-driver\.html$/i.test(path)) return false;
+  if (!/\/test-driver(\.html)?$/i.test(path)) return false;
   return (
     window.RALLY_TEST_MODE === true ||
     new URLSearchParams(location.search).get("test") === "1"

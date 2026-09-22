@@ -23,7 +23,7 @@ function pingPreview(type) {
 async function ensureTestAuth() {
   const res = await fetch("/api/me");
   if (res.status === 401) {
-    location.replace("/control-login.html?next=/test.html");
+    location.replace("/control-login.html?next=/test");
     return false;
   }
   const data = await res.json().catch(() => ({}));

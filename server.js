@@ -164,7 +164,15 @@ app.post(
 );
 
 app.use(auth.protectControl);
-app.use(express.static(path.join(__dirname, "public")));
+
+const publicDir = path.join(__dirname, "public");
+function sendPublic(res, file) {
+  res.sendFile(path.join(publicDir, file));
+}
+app.get(["/test", "/test/"], (_req, res) => sendPublic(res, "test.html"));
+app.get(["/test-driver", "/test-driver/"], (_req, res) => sendPublic(res, "test-driver.html"));
+app.get(["/control", "/control/"], (_req, res) => sendPublic(res, "control.html"));
+app.use(express.static(publicDir));
 
 function publicBase(req) {
   if (PUBLIC_BASE_URL) return PUBLIC_BASE_URL;
