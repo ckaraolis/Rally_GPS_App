@@ -10,7 +10,7 @@
   <title>Driver · Rally GPS</title>
   <link rel="manifest" href="/manifest.json" />
   <link rel="icon" href="/icons/icon.svg" type="image/svg+xml" />
-  <link rel="stylesheet" href="/css/app.css?v=nobanner1" />
+  <link rel="stylesheet" href="/css/app.css?v=apkparity6" />
 </head>
 <body class="driver-body">
   <div class="tape" aria-hidden="true"></div>
@@ -21,8 +21,8 @@
       <button id="settingsBtn" type="button" class="settings-gear" aria-label="Settings" title="Settings">⚙</button>
       <p id="secureNote" class="secure-note hidden"></p>
     </header>
+
     <section id="setupPanel" class="panel">
-      <p class="eyebrow">Door plate</p>
       <h1>Join the rally</h1>
       <form id="joinForm" class="join-form">
         <label>
@@ -42,11 +42,6 @@
       <div class="plate">
         <span id="plateNumber">#—</span>
         <span id="plateName">—</span>
-      </div>
-
-      <div id="statusLamp" class="lamp lamp-idle">
-        <span id="statusText">READY</span>
-        <small id="statusHint">Tap start when you are on the road</small>
       </div>
 
       <div id="roadSectionBox" class="road-section-box">
@@ -71,25 +66,30 @@
     </section>
 
     <section id="stagePanel" class="stage-panel hidden">
-      <div id="stageName" class="stage-name">SPECIAL STAGE</div>
       <div class="stage-grid">
-        <div class="stage-flag-box">
-          <small>STAGE STATUS</small>
-          <strong id="stageFlag">GREEN FLAG</strong>
+        <div class="stage-col-left">
+          <div class="stage-name-row">
+            <div id="stageName" class="stage-name">SPECIAL STAGE</div>
+            <button id="settingsBtnStage" type="button" class="settings-gear stage-settings-btn" aria-label="Settings" title="Settings">⚙</button>
+          </div>
+          <div class="stage-flag-box">
+            <small>STAGE STATUS</small>
+            <strong id="stageFlag">GREEN FLAG</strong>
+          </div>
         </div>
         <div class="stage-actions">
-          <button id="okBtn" type="button" class="btn btn-start stage-half hold-btn" aria-label="Hold 3 seconds to send GREEN OK">
+          <button id="okBtn" type="button" class="btn btn-start stage-half hold-btn" aria-label="Hold 2 seconds to send GREEN OK">
             <span class="hold-fill" aria-hidden="true"></span>
             <span class="hold-copy">
               <span class="hold-title">OK</span>
-              <small class="hold-hint">Hold 3 seconds</small>
+              <small class="hold-hint">Hold 2 seconds</small>
             </span>
           </button>
-          <button id="sosBtn" type="button" class="btn btn-stop stage-half hold-btn" aria-label="Hold 3 seconds to send RED SOS">
+          <button id="sosBtn" type="button" class="btn btn-stop stage-half hold-btn" aria-label="Hold 2 seconds to send RED SOS">
             <span class="hold-fill" aria-hidden="true"></span>
             <span class="hold-copy">
               <span class="hold-title">SOS</span>
-              <small class="hold-hint">Hold 3 seconds</small>
+              <small class="hold-hint">Hold 2 seconds</small>
             </span>
           </button>
         </div>
@@ -97,26 +97,27 @@
       <div id="crewStatusBanner" class="crew-status-banner hidden" role="status" aria-live="polite">
         <small>YOU CONFIRMED</small>
         <strong id="crewStatusRead">GREEN OK</strong>
-        <p id="crewStatusHint">Hold the other button 3 seconds to change.</p>
+        <p id="crewStatusHint">Hold the other button 2 seconds to change.</p>
       </div>
       <p id="stageSpeed" class="coords">—</p>
+      <p id="stageLockNote" class="stage-lock-note hidden">Tracking is locked. OK and SOS still work. Stop needs the organiser code.</p>
     </section>
 
     <section id="crewAlert" class="crew-alert hidden">
       <h2>STOPPED ON STAGE</h2>
-      <p>If you had an off or accident, confirm both crew are OK. Hold GREEN OK or RED SOS for 3 seconds.</p>
-      <button id="alertOkBtn" type="button" class="btn btn-start alert-btn hold-btn" aria-label="Hold 3 seconds to send GREEN OK">
+      <p>If you had an off or accident, confirm both crew are OK. Hold GREEN OK or RED SOS for 2 seconds.</p>
+      <button id="alertOkBtn" type="button" class="btn btn-start alert-btn hold-btn" aria-label="Hold 2 seconds to send GREEN OK">
         <span class="hold-fill" aria-hidden="true"></span>
         <span class="hold-copy">
           <span class="hold-title">GREEN OK</span>
-          <small class="hold-hint">Both crew OK · Hold 3s</small>
+          <small class="hold-hint">Both crew OK · Hold 2s</small>
         </span>
       </button>
-      <button id="alertSosBtn" type="button" class="btn btn-stop alert-btn hold-btn" aria-label="Hold 3 seconds to send RED SOS">
+      <button id="alertSosBtn" type="button" class="btn btn-stop alert-btn hold-btn" aria-label="Hold 2 seconds to send RED SOS">
         <span class="hold-fill" aria-hidden="true"></span>
         <span class="hold-copy">
           <span class="hold-title">RED SOS</span>
-          <small class="hold-hint">Need help · Hold 3s</small>
+          <small class="hold-hint">Need help · Hold 2s</small>
         </span>
       </button>
     </section>
@@ -142,22 +143,24 @@
         </div>
       </form>
     </div>
-    <div id="settingsSheet" class="flag-modal settings-sheet hidden" role="dialog" aria-modal="true" aria-labelledby="settingsTitle" hidden>
-      <div class="flag-modal-card">
+
+    <div id="settingsSheet" class="settings-sheet hidden" role="dialog" aria-modal="true" aria-labelledby="settingsTitle" hidden>
+      <button type="button" class="settings-backdrop" id="settingsBackdrop" aria-label="Close settings"></button>
+      <div class="settings-sheet-card">
         <h2 id="settingsTitle">Settings</h2>
-        <p class="hint">Theme</p>
+        <p class="settings-label">Status</p>
+        <p id="settingsStatusText" class="settings-status-text">Status: READY</p>
+        <small id="settingsStatusHint" class="settings-status-hint">Tap start when you are on the road</small>
+        <p class="settings-label">Theme</p>
         <div class="theme-row" role="radiogroup" aria-label="Theme">
           <label><input type="radio" name="driverTheme" id="themeDark" value="dark" /> Dark</label>
           <label><input type="radio" name="driverTheme" id="themeLight" value="light" /> Light</label>
         </div>
-        <div class="flag-modal-actions settings-actions">
-          <button id="settingsChangeCar" type="button" class="btn btn-ghost">Change car</button>
-          <button id="settingsStopBtn" type="button" class="btn btn-stop btn-stop-small">Stop tracking</button>
-          <button id="settingsClose" type="button" class="btn btn-ghost">Close</button>
-        </div>
+        <button id="settingsChangeCar" type="button" class="btn btn-ghost settings-change-btn">Change car / server</button>
+        <button id="settingsStopBtn" type="button" class="btn btn-stop btn-stop-small">Stop tracking</button>
       </div>
     </div>
   </main>
-  <script src="/js/driver.js?v=nobanner1"></script>
+  <script src="/js/driver.js?v=apkparity6"></script>
 </body>
 </html>

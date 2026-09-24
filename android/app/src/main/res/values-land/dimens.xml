@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Compact so name + flag + OK/SOS + confirm banner fit one landscape screen -->
+    <dimen name="stage_main_height">148dp</dimen>
+    <!-- Road/track: plate + road + speed/GPS (+ start) on one landscape screen -->
+    <dimen name="track_gap">6dp</dimen>
+    <dimen name="track_plate_pad">8dp</dimen>
+    <dimen name="track_plate_number">20sp</dimen>
+    <dimen name="track_plate_name">16sp</dimen>
+    <dimen name="track_road_pad">8dp</dimen>
+    <dimen name="track_road_label">11sp</dimen>
+    <dimen name="track_road_value">16sp</dimen>
+    <dimen name="track_tele_pad">8dp</dimen>
+    <dimen name="track_tele_value">18sp</dimen>
+    <dimen name="track_toggle_height">44dp</dimen>
+    <dimen name="top_bar_margin_top">4dp</dimen>
+    <dimen name="crew_alert_title">20sp</dimen>
+    <dimen name="crew_alert_copy">13sp</dimen>
+    <dimen name="crew_alert_btn_text">18sp</dimen>
+    <dimen name="crew_alert_btn_min">72dp</dimen>
+    <dimen name="crew_alert_btn_gap">10dp</dimen>
+</resources>

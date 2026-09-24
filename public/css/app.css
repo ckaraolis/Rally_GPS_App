@@ -10,6 +10,22 @@
   --amber: #ffc14a;
   --go: #b6f04a;
   --stop: #ff3b30;
+  --black: #111111;
+  --input-bg: #0c0d0b;
+  --plate-fill: #0a0b09;
+  --plate-stroke: #eee8d8;
+  --road-idle: #0d1628;
+  --road-on: #10244a;
+  --road-off: #1a1710;
+  --road-text: #9cccff;
+  --road-border: #1d3a6d;
+  --stage-bg: #2a0f0f;
+  --lamp-idle: #16170f;
+  --lamp-live: #10200c;
+  --lamp-warn: #2a140c;
+  --modal-bg: #161714;
+  --secure-bg: #2a1c0c;
+  --secure-border: #5a3a12;
   --font: "Barlow Condensed", sans-serif;
   --mono: "Share Tech Mono", ui-monospace, monospace;
 }
@@ -23,19 +39,37 @@ html[data-theme="light"] {
   --amber: #e09a20;
   --go: #5a9e12;
   --stop: #d32f2f;
+  --input-bg: #fffdf8;
+  --plate-fill: #ede7da;
+  --plate-stroke: #2a2b24;
+  --road-idle: #d6e0f0;
+  --road-on: #c5d6f5;
+  --road-off: #e8e0d0;
+  --road-text: #1a4a8a;
+  --road-border: #9bb0d4;
+  --stage-bg: #f5dada;
+  --lamp-idle: #e8e2d4;
+  --lamp-live: #d8ecd0;
+  --lamp-warn: #f0d8c8;
+  --modal-bg: #f7f3ea;
+  --secure-bg: #f5e6c8;
+  --secure-border: #c9a45a;
 }
 
 * { box-sizing: border-box; }
 html, body { margin: 0; min-height: 100%; min-height: 100dvh; }
 body {
   background:
-    radial-gradient(1200px 500px at 10% -10%, #2a220f 0%, transparent 55%),
+    radial-gradient(1200px 500px at 10% -10%, color-mix(in srgb, var(--amber) 22%, transparent) 0%, transparent 55%),
     var(--bg);
   color: var(--ink);
   font-family: var(--font);
 }
 .driver-body {
   min-height: 100dvh;
+  background:
+    radial-gradient(1200px 500px at 10% -10%, color-mix(in srgb, var(--amber) 18%, transparent) 0%, transparent 55%),
+    var(--bg);
 }
 a { color: var(--amber); text-decoration: none; }
 code { font-family: var(--mono); font-size: 0.9em; }
@@ -197,8 +231,8 @@ code { font-family: var(--mono); font-size: 0.9em; }
 .secure-note {
   margin: 10px 0 0;
   padding: 10px 12px;
-  border: 1px solid #5a3a12;
-  background: #2a1c0c;
+  border: 1px solid var(--secure-border);
+  background: var(--secure-bg);
   color: var(--amber);
   font-size: 1rem;
 }
@@ -216,20 +250,29 @@ input {
   width: 100%;
   padding: 14px 12px;
   border: 1px solid var(--line);
-  background: #0c0d0b;
+  background: var(--input-bg);
   color: var(--ink);
   font-family: var(--mono);
   font-size: 1.3rem;
 }
 
+.track-panel {
+  display: grid;
+  gap: 12px;
+}
+.driver-shell .track-panel,
+.driver-shell .stage-panel,
+.driver-shell .panel {
+  width: 100%;
+}
 .plate {
   display: flex;
   justify-content: space-between;
   align-items: baseline;
   gap: 12px;
   padding: 12px 14px;
-  background: color-mix(in srgb, var(--bg) 85%, #000);
-  border: 4px solid var(--ink);
+  background: var(--plate-fill);
+  border: 4px solid var(--plate-stroke);
   font-size: 1.8rem;
   text-transform: uppercase;
 }
@@ -245,43 +288,121 @@ input {
 
 .settings-gear {
   appearance: none;
-  border: 1px solid var(--line);
-  background: var(--panel);
+  border: 0;
+  background: transparent;
   color: var(--ink);
   width: 40px;
   height: 40px;
-  font-size: 1.25rem;
+  font-size: 1.35rem;
   line-height: 1;
   cursor: pointer;
   flex: 0 0 auto;
 }
 .settings-gear-float {
-  position: fixed;
-  top: max(10px, env(safe-area-inset-top));
-  right: max(10px, env(safe-area-inset-right));
-  z-index: 30;
   display: none;
+  position: fixed;
+  top: max(6px, env(safe-area-inset-top));
+  right: max(8px, env(safe-area-inset-right));
+  z-index: 40;
+}
+body:has(#stagePanel:not(.hidden)) .settings-gear-float,
+body:has(#stagePanel:not(.hidden)) .driver-top .settings-gear {
+  display: none !important;
 }
 .theme-row {
   display: flex;
   gap: 18px;
-  margin: 8px 0 16px;
+  margin: 4px 0 0;
 }
 .theme-row label {
   display: flex;
   align-items: center;
   gap: 8px;
-  font-size: 1.1rem;
+  flex: 1;
+  font-size: 1.05rem;
   text-transform: none;
   letter-spacing: 0;
   color: var(--ink);
 }
-.settings-actions {
-  flex-wrap: wrap;
+.settings-label {
+  margin: 16px 0 0;
+  color: var(--muted);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  font-size: 0.75rem;
+}
+.settings-status-text {
+  margin: 0;
+  font-size: 1.15rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink);
+}
+.settings-status-text.lamp-live {
+  color: var(--go);
+}
+.settings-status-text.lamp-warn {
+  color: var(--orange);
+}
+.settings-status-hint {
+  margin: -4px 0 0;
+  color: var(--muted);
+  font-size: 0.85rem;
+  line-height: 1.35;
+}
+.settings-status-hint.hidden {
+  display: none;
+}
+.settings-sheet {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  padding: 0;
+  background: transparent;
+}
+.settings-sheet.hidden,
+.settings-sheet[hidden] {
+  display: none !important;
+}
+.settings-backdrop {
+  position: absolute;
+  inset: 0;
+  border: 0;
+  background: rgba(8, 9, 7, 0.55);
+  cursor: pointer;
+}
+.settings-sheet-card {
+  position: relative;
+  z-index: 1;
+  width: min(480px, 100%);
+  max-height: min(80dvh, 560px);
+  overflow: auto;
+  background: var(--modal-bg);
+  border: 1px solid var(--line);
+  border-bottom: 0;
+  padding: 20px 20px max(24px, env(safe-area-inset-bottom));
+  display: grid;
+  gap: 10px;
+}
+.settings-sheet-card h2 {
+  margin: 0;
+  font-size: 1.4rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--ink);
+}
+.settings-change-btn {
+  margin-top: 10px;
+  min-height: 48px;
+  font-size: 1.05rem;
 }
 .btn-stop-small {
   min-height: 44px !important;
-  font-size: 1rem !important;
+  font-size: 0.95rem !important;
   padding: 8px 14px !important;
 }
 .telemetry-simple {
@@ -292,6 +413,7 @@ input {
   padding: 22px 16px;
   text-align: center;
   border: 1px solid var(--line);
+  background: var(--panel);
 }
 .lamp span {
   display: block;
@@ -305,13 +427,13 @@ input {
   margin: 6px auto 0;
   white-space: normal;
 }
-.lamp-idle { background: #16170f; }
+.lamp-idle { background: var(--lamp-idle); }
 .lamp-live {
-  background: #10200c;
+  background: var(--lamp-live);
   box-shadow: inset 0 0 0 2px var(--go);
 }
 .lamp-live span { color: var(--go); }
-.lamp-warn { background: #2a140c; }
+.lamp-warn { background: var(--lamp-warn); }
 .lamp-warn span { color: var(--orange); }
 
 .road-section-box {
@@ -319,27 +441,27 @@ input {
   gap: 4px;
   text-align: center;
   padding: 16px 12px;
-  background: #0d1628;
-  border: 1px solid #1d3a6d;
+  background: var(--road-idle);
+  border: 1px solid var(--road-border);
 }
 .road-section-box small {
   color: var(--muted);
   letter-spacing: 0.16em;
 }
 .road-section-box strong {
-  color: #7eb6ff;
+  color: var(--road-text);
   font-size: 1.45rem;
   letter-spacing: 0.04em;
   text-transform: uppercase;
   line-height: 1.15;
 }
 .road-section-box.on-road {
-  background: #10244a;
-  box-shadow: inset 0 0 0 2px #3d7dff;
+  background: var(--road-on);
+  box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--road-text) 55%, transparent);
 }
-.road-section-box.on-road strong { color: #9cccff; }
+.road-section-box.on-road strong { color: var(--road-text); }
 .road-section-box.off-route {
-  background: #1a1710;
+  background: var(--road-off);
   border-color: var(--line);
 }
 .road-section-box.off-route strong { color: var(--amber); }
@@ -369,6 +491,13 @@ input {
 .coords {
   font-family: var(--mono);
   color: var(--muted);
+  font-size: 0.95rem;
+  text-align: center;
+}
+.stage-lock-note {
+  margin: 0;
+  text-align: center;
+  color: var(--amber);
   font-size: 0.95rem;
 }
 .error { color: var(--stop); }
@@ -542,22 +671,48 @@ input {
 .car-popup strong {
   font-size: 1.2rem;
 }
-.stage-panel { display: grid; gap: 14px; }
-.stage-name {
-  text-align: center;
-  padding: 18px 12px;
-  background: #2a0f0f;
-  color: var(--stop);
-  font-size: 1.8rem;
-  font-weight: 800;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-}
+.stage-panel { display: grid; gap: 10px; }
 .stage-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 10px;
   min-height: 220px;
+}
+.stage-col-left {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-height: 0;
+  min-width: 0;
+}
+.stage-name-row {
+  display: flex;
+  align-items: stretch;
+  gap: 0;
+  min-width: 0;
+  background: var(--stage-bg);
+}
+.stage-name {
+  flex: 1 1 auto;
+  min-width: 0;
+  text-align: center;
+  padding: 12px 10px;
+  background: transparent;
+  color: var(--stop);
+  font-size: 1.35rem;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.stage-settings-btn {
+  width: 44px;
+  height: auto;
+  min-height: 44px;
+  color: var(--stop);
+  border-left: 1px solid rgba(200, 40, 40, 0.28);
 }
 .stage-flag-box {
   display: grid;
@@ -565,6 +720,8 @@ input {
   text-align: center;
   background: #10200c;
   padding: 12px;
+  flex: 1 1 auto;
+  min-height: 0;
 }
 .stage-flag-box small {
   color: var(--muted);
@@ -583,7 +740,9 @@ input {
 }
 .stage-actions {
   display: grid;
+  grid-template-rows: 1fr 1fr;
   gap: 10px;
+  min-height: 0;
 }
 .stage-half { min-height: 0; height: 100%; }
 .hold-btn {
@@ -606,7 +765,7 @@ input {
   z-index: 0;
 }
 .hold-btn.holding .hold-fill {
-  animation: crew-hold-fill 3s linear forwards;
+  animation: crew-hold-fill 2s linear forwards;
 }
 @keyframes crew-hold-fill {
   from { transform: scaleX(0); }
@@ -747,7 +906,7 @@ input {
   width: min(440px, 100%);
   max-height: min(88vh, 720px);
   overflow: auto;
-  background: #161714;
+  background: var(--modal-bg);
   border: 1px solid var(--line);
   padding: 18px;
   display: grid;
@@ -1194,86 +1353,193 @@ img.kmz-ge-icon,
 
   .track-panel {
     display: grid;
-    grid-template-columns: minmax(180px, 1fr) 1.2fr;
-    grid-template-rows: auto auto 1fr auto;
+    grid-template-columns: minmax(160px, 1fr) 1.15fr;
+    grid-template-rows: auto minmax(0, 1fr) auto;
     grid-template-areas:
       "plate plate"
-      "road road"
-      "lamp tele"
+      "road tele"
       "err btn";
-    gap: 8px 12px;
+    gap: 6px 10px;
     align-items: stretch;
-    height: calc(100dvh - 36px);
+    align-content: stretch;
+    max-width: 900px;
+    margin: 0 auto;
+    height: calc(100dvh - 28px);
+    overflow: hidden;
+  }
+  body:has(#trackPanel:not(.hidden)):not(:has(#stagePanel:not(.hidden))) .driver-shell {
+    overflow: hidden;
+    padding-top: 6px;
+    padding-bottom: max(6px, env(safe-area-inset-bottom));
   }
   .track-panel .plate {
     grid-area: plate;
-    font-size: 1.35rem;
-    padding: 8px 12px;
+    font-size: clamp(1.05rem, 4.2vh, 1.35rem);
+    padding: 6px 10px;
+    border-width: 3px;
   }
-  .track-panel .lamp {
-    grid-area: lamp;
-    padding: 10px 12px;
-  }
-  .track-panel .lamp span { font-size: 1.6rem; letter-spacing: 0.1em; }
   .track-panel .road-section-box {
     grid-area: road;
-    padding: 8px 10px;
+    padding: 6px 8px;
+    min-height: 0;
+    align-content: center;
   }
-  .track-panel .road-section-box strong { font-size: 1.15rem; }
+  .track-panel .road-section-box small {
+    font-size: 0.68rem;
+    letter-spacing: 0.12em;
+  }
+  .track-panel .road-section-box strong {
+    font-size: clamp(1rem, 4.2vh, 1.25rem);
+  }
   .track-panel .telemetry {
     grid-area: tele;
     grid-template-columns: 1fr 1fr;
+    min-height: 0;
   }
-  .track-panel .telemetry dd { font-size: 1.25rem; }
-  .track-panel .telemetry div { padding: 8px 10px; }
-  .track-panel .error { grid-area: err; margin: 0; }
+  .track-panel .telemetry dd {
+    font-size: clamp(1.05rem, 4.6vh, 1.35rem);
+    margin: 2px 0 0;
+  }
+  .track-panel .telemetry dt { font-size: 0.7rem; }
+  .track-panel .telemetry div {
+    padding: 6px 8px;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+  }
+  .track-panel .error { grid-area: err; margin: 0; font-size: 0.85rem; }
   .track-panel .btn {
     grid-area: btn;
-    min-height: 52px;
-    font-size: 1.2rem;
+    min-height: 44px;
+    font-size: 1.05rem;
+  }
+  /* Crush non-essential road chrome on very short landscape */
+  @media (max-height: 420px) {
+    .track-panel {
+      grid-template-rows: auto minmax(0, 1fr);
+      grid-template-areas:
+        "plate plate"
+        "road tele";
+      height: calc(100dvh - 16px);
+      gap: 4px 8px;
+    }
+    .track-panel .road-section-box small,
+    .track-panel .telemetry dt,
+    .track-panel .error,
+    .track-panel .btn {
+      display: none;
+    }
+    .track-panel .plate {
+      font-size: 1rem;
+      padding: 4px 8px;
+      border-width: 2px;
+    }
+    .track-panel .road-section-box { padding: 4px 6px; }
+    .track-panel .telemetry div { padding: 4px 6px; }
   }
 
   .stage-panel {
-    grid-template-columns: 1fr 1fr;
-    grid-template-rows: auto 1fr auto auto;
+    grid-template-columns: 1fr;
+    grid-template-rows: minmax(0, 1fr) auto auto auto;
     grid-template-areas:
-      "name name"
-      "grid grid"
-      "status status"
-      "speed speed";
-    gap: 8px;
-    height: calc(100dvh - 48px);
+      "grid"
+      "status"
+      "speed"
+      "lock";
+    gap: 6px;
+    height: calc(100dvh - 28px);
+    max-width: 960px;
+    margin: 0 auto;
+    align-content: stretch;
+    overflow: hidden;
   }
-  .stage-name {
-    grid-area: name;
-    padding: 8px 10px;
-    font-size: clamp(1.15rem, 4.4vh, 1.6rem);
+  body:has(#stagePanel:not(.hidden)) .driver-shell {
+    overflow: hidden;
+    padding-top: 6px;
+    padding-bottom: max(6px, env(safe-area-inset-bottom));
+  }
+  body:has(#stagePanel:not(.hidden)) .settings-gear-float {
+    display: none;
   }
   .stage-grid {
     grid-area: grid;
     min-height: 0;
-    height: auto;
-    flex: 1;
+    height: 100%;
+    gap: 8px;
   }
-  .stage-flag-box strong { font-size: clamp(1.3rem, 5vh, 2rem); }
+  .stage-col-left {
+    gap: 6px;
+    height: 100%;
+  }
+  .stage-name {
+    padding: 6px 8px;
+    font-size: clamp(0.95rem, 3.6vh, 1.25rem);
+  }
+  .stage-settings-btn {
+    width: 40px;
+    min-height: 0;
+  }
+  .stage-flag-box {
+    padding: 8px;
+  }
+  .stage-flag-box small {
+    font-size: 0.7rem;
+  }
+  .stage-flag-box strong { font-size: clamp(1.15rem, 4.8vh, 1.85rem); }
+  .stage-actions {
+    height: 100%;
+    gap: 8px;
+  }
   .crew-status-banner {
     grid-area: status;
-    padding: 6px 10px;
+    padding: 4px 8px;
   }
-  .crew-status-banner strong { font-size: clamp(1.45rem, 6.5vh, 2.1rem); }
-  .crew-status-banner p { font-size: 0.92rem; margin: 2px 0 0; }
-  .hold-btn .hold-hint { font-size: 0.6em; margin-top: 2px; }
+  .crew-status-banner small {
+    font-size: 0.68rem;
+    letter-spacing: 0.12em;
+  }
+  .crew-status-banner strong { font-size: clamp(1.15rem, 4.8vh, 1.7rem); }
+  .crew-status-banner p {
+    font-size: 0.78rem;
+    margin: 1px 0 0;
+    line-height: 1.15;
+  }
+  .hold-btn .hold-hint { font-size: 0.55em; margin-top: 1px; }
   .stage-panel .coords {
     grid-area: speed;
     margin: 0;
     align-self: center;
+    font-size: 0.95rem;
+    line-height: 1.1;
+  }
+  .stage-panel .stage-lock-note {
+    grid-area: lock;
+    margin: 0;
+    font-size: 0.78rem;
+    line-height: 1.15;
   }
   .stage-panel > .btn {
     grid-area: stop;
-    min-height: 48px;
-    font-size: 1.1rem;
+    min-height: 40px;
+    font-size: 1rem;
   }
-  .stage-half { min-height: 48px; font-size: 1.25rem; }
+  .stage-half { min-height: 0; font-size: 1.15rem; }
+  /* Keep confirmed banner visible: crush secondary lines when very short */
+  @media (max-height: 420px) {
+    .stage-panel .coords,
+    .stage-panel .stage-lock-note,
+    .crew-status-banner p {
+      display: none;
+    }
+    .stage-panel {
+      grid-template-rows: minmax(0, 1fr) auto;
+      grid-template-areas:
+        "grid"
+        "status";
+      height: calc(100dvh - 16px);
+      gap: 4px;
+    }
+  }
 
   .crew-alert,
   .red-flag-alert {
@@ -1286,13 +1552,27 @@ img.kmz-ge-icon,
   }
   .crew-alert {
     grid-template-columns: 1fr 1fr;
-    gap: 10px;
-    align-content: center;
+    grid-template-rows: auto auto minmax(0, 1fr);
+    gap: 8px 12px;
+    align-content: stretch;
+    height: 100dvh;
+    max-height: 100dvh;
+    padding-top: max(10px, env(safe-area-inset-top));
+    padding-bottom: max(10px, env(safe-area-inset-bottom));
   }
   .crew-alert h2,
   .crew-alert p { grid-column: 1 / -1; }
-  .crew-alert h2 { font-size: 1.6rem; }
-  .alert-btn { min-height: 88px; font-size: 1.2rem; }
+  .crew-alert h2 { font-size: clamp(1.15rem, 5vh, 1.55rem); margin: 0; }
+  .crew-alert p {
+    margin: 0;
+    font-size: clamp(0.85rem, 3.2vh, 1.05rem);
+    line-height: 1.25;
+  }
+  .alert-btn {
+    min-height: 0;
+    height: 100%;
+    font-size: clamp(1.05rem, 4.2vh, 1.35rem);
+  }
 
   .red-flag-alert {
     grid-template-columns: minmax(0, 1.4fr) minmax(180px, 0.8fr);
@@ -1487,6 +1767,7 @@ body.test-mode::before {
 .test-driver-body #secureNote,
 .test-driver-body #settingsBtn,
 .test-driver-body #settingsBtnFloat,
+.test-driver-body #settingsBtnStage,
 .test-driver-body #settingsSheet {
   display: none !important;
 }

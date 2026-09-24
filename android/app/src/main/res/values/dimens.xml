@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <dimen name="stage_main_height">220dp</dimen>
+    <dimen name="track_gap">16dp</dimen>
+    <dimen name="track_plate_pad">14dp</dimen>
+    <dimen name="track_plate_number">28sp</dimen>
+    <dimen name="track_plate_name">22sp</dimen>
+    <dimen name="track_road_pad">16dp</dimen>
+    <dimen name="track_road_label">13sp</dimen>
+    <dimen name="track_road_value">22sp</dimen>
+    <dimen name="track_tele_pad">14dp</dimen>
+    <dimen name="track_tele_value">24sp</dimen>
+    <dimen name="track_toggle_height">56dp</dimen>
+    <dimen name="top_bar_margin_top">12dp</dimen>
+    <dimen name="crew_alert_title">28sp</dimen>
+    <dimen name="crew_alert_copy">17sp</dimen>
+    <dimen name="crew_alert_btn_text">22sp</dimen>
+    <dimen name="crew_alert_btn_min">96dp</dimen>
+    <dimen name="crew_alert_btn_gap">8dp</dimen>
+</resources>

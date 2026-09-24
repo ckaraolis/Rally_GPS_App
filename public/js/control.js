@@ -540,9 +540,14 @@ function fileToBase64(file) {
   });
 }
 
+let refreshSeq = 0;
+
 async function refresh() {
+  const seq = ++refreshSeq;
   const res = await fetch("/api/cars");
   const data = await res.json();
+  // Drop stale overlapping polls so a slow older response cannot hide a fresh OK/SOS.
+  if (seq !== refreshSeq) return;
   latestCars = data.cars || [];
   liveRally = data.liveRally || null;
   if (data.ralliesReady === false) ralliesReady = false;
@@ -1567,7 +1572,7 @@ ensureControlAuth().then(async (ok) => {
   refresh();
   refreshSections();
   scheduleMapResize();
-  setInterval(refresh, 3000);
+  setInterval(refresh, 1500);
   setInterval(refreshSections, 4000);
   setInterval(refreshRallies, 8000);
 });

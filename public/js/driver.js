@@ -5,9 +5,8 @@ const crewAlert = document.getElementById("crewAlert");
 const redFlagAlert = document.getElementById("redFlagAlert");
 const joinForm = document.getElementById("joinForm");
 const toggleBtn = document.getElementById("toggleBtn");
-const statusLamp = document.getElementById("statusLamp");
-const statusText = document.getElementById("statusText");
-const statusHint = document.getElementById("statusHint");
+const settingsStatusText = document.getElementById("settingsStatusText");
+const settingsStatusHint = document.getElementById("settingsStatusHint");
 const errorRead = document.getElementById("errorRead");
 const secureNote = document.getElementById("secureNote");
 
@@ -21,7 +20,7 @@ const MAX_QUEUE = 2000;
 const MIN_QUEUE_METERS = 3;
 const MIN_QUEUE_MS = 2000;
 const FLAG_SOUND_SRC = "/audio/red-flag-alert.wav?v=1";
-const CREW_HOLD_MS = 3000;
+const CREW_HOLD_MS = 2000;
 
 function isRallyTestPage() {
   const path = String(location.pathname || "");
@@ -164,9 +163,28 @@ function closeSettingsSheet() {
   sheet.classList.add("hidden");
 }
 
+function showSetupPanel() {
+  localStorage.removeItem(KEY);
+  session = null;
+  setTrackingWanted(false);
+  trackPanel?.classList.add("hidden");
+  stagePanel?.classList.add("hidden");
+  hideCrewAlert();
+  hideRedFlagAlert();
+  setupPanel?.classList.remove("hidden");
+  document.getElementById("carNumber") && (document.getElementById("carNumber").value = "");
+  document.getElementById("driverName") && (document.getElementById("driverName").value = "");
+  syncLockChrome();
+}
+
 document.getElementById("settingsBtn")?.addEventListener("click", openSettingsSheet);
 document.getElementById("settingsBtnFloat")?.addEventListener("click", openSettingsSheet);
-document.getElementById("settingsClose")?.addEventListener("click", closeSettingsSheet);
+document.getElementById("settingsBtnStage")?.addEventListener("click", openSettingsSheet);
+document.getElementById("settingsBackdrop")?.addEventListener("click", closeSettingsSheet);
+document.addEventListener("keydown", (event) => {
+  if (event.key !== "Escape") return;
+  closeSettingsSheet();
+});
 document.getElementById("themeDark")?.addEventListener("change", () => applyTheme("dark"));
 document.getElementById("themeLight")?.addEventListener("change", () => applyTheme("light"));
 document.getElementById("settingsStopBtn")?.addEventListener("click", () => {
@@ -177,17 +195,11 @@ document.getElementById("settingsStopBtn")?.addEventListener("click", () => {
 document.getElementById("settingsChangeCar")?.addEventListener("click", () => {
   if (TEST_MODE) return;
   closeSettingsSheet();
-  const leave = () => {
-    localStorage.removeItem(KEY);
-    session = null;
-    setTrackingWanted(false);
-    location.reload();
-  };
   if (tracking) {
-    pendingAfterStop = leave;
+    pendingAfterStop = showSetupPanel;
     requestStopTracking();
   } else {
-    leave();
+    showSetupPanel();
   }
 });
 document.getElementById("driverHome")?.addEventListener("click", (event) => {
@@ -246,16 +258,16 @@ function restoreHoldHint(btn, status, { change = false } = {}) {
   if (change) {
     hint.textContent = isAlert
       ? status === "ok"
-        ? "Hold 3s to change to OK"
-        : "Hold 3s to change to SOS"
-      : "Hold 3s to change";
+        ? "Hold 2s to change to OK"
+        : "Hold 2s to change to SOS"
+      : "Hold 2s to change";
     return;
   }
   hint.textContent = isAlert
     ? status === "ok"
-      ? "Both crew OK · Hold 3s"
-      : "Need help · Hold 3s"
-    : "Hold 3 seconds";
+      ? "Both crew OK · Hold 2s"
+      : "Need help · Hold 2s"
+    : "Hold 2 seconds";
 }
 
 function cancelAnyHold() {
@@ -301,8 +313,8 @@ function setCrewStatusUi(status) {
   banner.classList.toggle("sos", !isOk);
   document.getElementById("crewStatusRead").textContent = isOk ? "GREEN OK" : "RED SOS";
   document.getElementById("crewStatusHint").textContent = isOk
-    ? "You confirmed OK. Hold SOS 3 seconds to change."
-    : "You confirmed SOS. Hold OK 3 seconds to change.";
+    ? "You confirmed OK. Hold SOS 2 seconds to change."
+    : "You confirmed SOS. Hold OK 2 seconds to change.";
   crewHoldButtons().forEach(({ btn, status: s }) => {
     const sent = s === status;
     btn.classList.toggle("is-sent", sent);
@@ -349,7 +361,7 @@ function bindCrewHold(button, status) {
     }
     button.classList.add("holding");
     const started = Date.now();
-    if (hint) hint.textContent = "Keep holding 3s";
+    if (hint) hint.textContent = "Keep holding 2s";
     const tick = setInterval(() => {
       const left = Math.max(0, CREW_HOLD_MS - (Date.now() - started));
       if (hint) hint.textContent = `Keep holding ${Math.max(1, Math.ceil(left / 1000))}s`;
@@ -495,9 +507,14 @@ function updateRoadSectionUi() {
 }
 
 function setLamp(mode, title, hint) {
-  statusLamp.className = `lamp ${mode}`;
-  statusText.textContent = title;
-  statusHint.textContent = hint;
+  if (settingsStatusText) {
+    settingsStatusText.className = `settings-status-text ${mode || ""}`.trim();
+    settingsStatusText.textContent = `Status: ${title}`;
+  }
+  if (settingsStatusHint) {
+    settingsStatusHint.textContent = hint || "";
+    settingsStatusHint.classList.toggle("hidden", !hint);
+  }
 }
 
 function showError(message) {
@@ -518,6 +535,13 @@ function applyStageFlagUi() {
   flagBox.classList.toggle("red", red);
 }
 
+function updateStageLockNote() {
+  const note = document.getElementById("stageLockNote");
+  if (!note) return;
+  const show = tracking && inStage && stopLock === true;
+  note.classList.toggle("hidden", !show);
+}
+
 function renderMode() {
   if (shouldShowRedFlag()) {
     showRedFlagAlert();
@@ -530,10 +554,12 @@ function renderMode() {
     stagePanel.classList.remove("hidden");
     document.getElementById("stageName").textContent = stageName || "SPECIAL STAGE";
     applyStageFlagUi();
+    updateStageLockNote();
   } else {
     stagePanel.classList.add("hidden");
     if (session) trackPanel.classList.remove("hidden");
     updateRoadSectionUi();
+    if (tracking) setLiveLamp();
   }
   updateBgNote();
 }
@@ -593,6 +619,7 @@ function shouldShowRedFlag() {
 
 function showRedFlagAlert() {
   closeStopLockDialog();
+  closeSettingsSheet();
   cancelAnyHold();
   redFlagAlert.classList.remove("hidden");
   crewAlert.classList.add("hidden");
@@ -610,8 +637,10 @@ function hideRedFlagAlert() {
 
 function showCrewAlert() {
   if (shouldShowRedFlag()) return;
+  // Location updates keep calling this while stopped — never cancel an in-progress hold.
+  if (!crewAlert.classList.contains("hidden")) return;
   closeStopLockDialog();
-  cancelAnyHold();
+  closeSettingsSheet();
   crewAlert.classList.remove("hidden");
   trackPanel.classList.add("hidden");
   stagePanel.classList.add("hidden");
@@ -694,6 +723,8 @@ function noteStopLock(value) {
   }
   if (tracking && stopLikelyLocked()) armExitGuard();
   syncLockChrome();
+  if (tracking) setLiveLamp();
+  updateStageLockNote();
 }
 
 async function refreshStopLock() {
@@ -738,6 +769,7 @@ function armExitGuard() {
 
 function openStopLockDialog(message) {
   if (TEST_MODE || safetyAlertOpen()) return;
+  closeSettingsSheet();
   const modal = document.getElementById("stopLockModal");
   if (!modal) return;
   const err = document.getElementById("stopLockError");
@@ -874,14 +906,16 @@ async function applyLocalStop() {
   stopBackgroundKeepalive();
   releaseWakeLock();
   clearTrackingNotification();
+  clearNetworkHint();
   toggleBtn.textContent = "Start tracking";
   toggleBtn.className = "btn btn-start";
   if (toggleBtn) toggleBtn.classList.remove("hidden");
-  setLamp("lamp-idle", "STOPPED", "Tracking is off. Tap start when you are ready.");
+  setLamp("lamp-idle", "READY", "Tap start when you are on the road");
   exitGuardArmed = false;
   closeStopLockDialog();
   syncLockChrome();
   updateBgNote();
+  updateStageLockNote();
   renderMode();
   const after = pendingAfterStop;
   pendingAfterStop = null;
@@ -977,6 +1011,7 @@ async function resumeForegroundTracking() {
 async function onFix(pos) {
   if (document.hidden) bgFixesWhileHidden += 1;
   lastFix = pos;
+  if (!tracking) return;
   const { speed, accuracy } = pos.coords;
   const speedText =
     speed == null || Number.isNaN(speed) ? "—" : `${Math.round(speed * 3.6)} km/h`;
@@ -987,6 +1022,8 @@ async function onFix(pos) {
 
   enqueueFix(pos);
   const result = await flushQueue();
+  // Stop may have completed while the ping was in flight — never stick No GSM after stop.
+  if (!tracking) return;
   if (result?.busy) {
     updateBgNote();
     return;
@@ -996,18 +1033,40 @@ async function onFix(pos) {
     return;
   }
   if (!result?.ok) {
-    setLamp(
-      "lamp-warn",
-      "NO NETWORK",
-      "GPS is saved on this phone. Race control will get the route when GSM returns."
-    );
+    // Only show No GSM when the browser reports offline. A single failed ping
+    // with cellular/Wi‑Fi up must not permanently lock the driver UI.
+    if (!navigator.onLine) {
+      showNetworkQueuedHint();
+    }
   }
   updateBgNote();
+}
+
+function showNetworkQueuedHint() {
+  if (!tracking || navigator.onLine) return;
+  setLamp(
+    "lamp-warn",
+    "NO NETWORK",
+    "No GSM. GPS is saved on the phone and will appear on the map when signal returns."
+  );
+  if (errorRead) {
+    errorRead.textContent =
+      "No GSM. GPS is saved on the phone and will appear on the map when signal returns.";
+    errorRead.classList.remove("hidden");
+  }
+}
+
+function clearNetworkHint() {
+  if (errorRead) {
+    errorRead.textContent = "";
+    errorRead.classList.add("hidden");
+  }
 }
 
 function applyPingResult(data, speed) {
   if (typeof data.stopLock === "boolean") noteStopLock(data.stopLock);
   lastPingOkAt = Date.now();
+  clearNetworkHint();
   setLiveLamp();
   applySectionAndFlag(data);
   applyCrewStatusFromServer(data);
@@ -1214,32 +1273,18 @@ function setTrackingWanted(on) {
 }
 
 function liveHint() {
-  const { iOS, android } = trackingPlatform();
+  if (stopLock === true) {
+    return "Locked. Stop needs the organiser code.";
+  }
   if (document.hidden) {
-    if (iOS) {
-      return "iPhone usually pauses GPS here. Unlock the phone and keep Rally GPS on screen.";
-    }
-    if (bgFixesWhileHidden > 0) {
-      return "GPS is still sending with this tab in the background.";
-    }
-    return "Trying to keep GPS alive. If the map stops, unlock the phone or use the Android app.";
+    return "Keep this tab open so GPS can continue.";
   }
-  if (iOS) {
-    return "Keep this screen on. iPhone cannot track with the screen locked or after switching apps.";
-  }
-  if (android) {
-    return "Keep this screen on, or tracking may pause. For lock-screen GPS, use the Rally GPS Android app.";
-  }
-  return "Keep this tab open. GPS may pause if you lock the screen or switch away.";
+  return "GPS is live. Keep this screen on.";
 }
 
 function setLiveLamp() {
   if (!tracking) return;
-  setLamp(
-    "lamp-live",
-    document.hidden ? "TRACKING · BACKGROUND" : "TRACKING",
-    liveHint()
-  );
+  setLamp("lamp-live", "TRACKING", liveHint());
 }
 
 function updateBgNote() {
@@ -1416,7 +1461,17 @@ if (TEST_MODE) {
   });
 
   window.addEventListener("online", () => {
-    if (tracking) flushQueue();
+    clearNetworkHint();
+    if (tracking) {
+      setLiveLamp();
+      flushQueue();
+    } else {
+      setLamp("lamp-idle", "READY", "Tap start when you are on the road");
+    }
+  });
+
+  window.addEventListener("offline", () => {
+    if (tracking) showNetworkQueuedHint();
   });
 
   window.addEventListener("pagehide", () => {

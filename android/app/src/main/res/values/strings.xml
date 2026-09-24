@@ -10,9 +10,13 @@
     <string name="stop_tracking">Stop tracking</string>
     <string name="status_ready">READY</string>
     <string name="status_tracking">TRACKING</string>
+    <string name="status_label">Status</string>
+    <string name="settings_status_ready">Status: READY</string>
+    <string name="settings_status_tracking">Status: TRACKING</string>
     <string name="status_hint_ready">Tap start when you are on the road</string>
     <string name="status_hint_tracking">Background tracking is on. You can lock the screen or switch apps.</string>
     <string name="status_hint_locked">Tracking is locked. Keep this screen open. Stop needs the organiser code.</string>
+    <string name="status_hint_locked_short">Locked. Stop needs the organiser code.</string>
     <string name="stop_code_title">Stop tracking</string>
     <string name="stop_code_message">Enter the organiser stop code. A wrong code leaves tracking on.</string>
     <string name="stop_code_hint">4–6 digit code</string>

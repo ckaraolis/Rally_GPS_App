@@ -23,18 +23,21 @@
             android:padding="0dp">
 
             <View
+                android:id="@+id/tapeBar"
                 android:layout_width="match_parent"
                 android:layout_height="8dp"
                 android:background="@drawable/hazard_tape" />
 
             <LinearLayout
+                android:id="@+id/topBar"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="12dp"
+                android:layout_marginTop="@dimen/top_bar_margin_top"
                 android:gravity="center_vertical"
                 android:orientation="horizontal">
 
                 <TextView
+                    android:id="@+id/topBarTitle"
                     android:layout_width="0dp"
                     android:layout_height="wrap_content"
                     android:layout_weight="1"
@@ -56,9 +59,10 @@
             </LinearLayout>
 
             <FrameLayout
+                android:id="@+id/panelHost"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="12dp">
+                android:layout_marginTop="8dp">
 
                 <LinearLayout
                     android:id="@+id/setupPanel"
@@ -151,12 +155,13 @@
                     android:visibility="gone">
 
                     <LinearLayout
+                        android:id="@+id/plateRow"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
                         android:background="@drawable/plate_bg"
                         android:gravity="center_vertical"
                         android:orientation="horizontal"
-                        android:padding="14dp">
+                        android:padding="@dimen/track_plate_pad">
 
                         <TextView
                             android:id="@+id/plateNumber"
@@ -165,7 +170,7 @@
                             android:text="#—"
                             android:textAllCaps="true"
                             android:textColor="@color/amber"
-                            android:textSize="28sp"
+                            android:textSize="@dimen/track_plate_number"
                             android:textStyle="bold" />
 
                         <TextView
@@ -180,125 +185,116 @@
                             android:text="—"
                             android:textAllCaps="true"
                             android:textColor="@color/ink"
-                            android:textSize="22sp"
+                            android:textSize="@dimen/track_plate_name"
                             android:textStyle="bold" />
+
+                        <ImageButton
+                            android:id="@+id/settingsBtnTrack"
+                            android:layout_width="40dp"
+                            android:layout_height="40dp"
+                            android:background="?attr/selectableItemBackgroundBorderless"
+                            android:contentDescription="@string/settings_content_desc"
+                            android:padding="8dp"
+                            android:scaleType="centerInside"
+                            android:src="@drawable/ic_settings"
+                            android:visibility="gone"
+                            app:tint="@color/ink" />
                     </LinearLayout>
 
                     <LinearLayout
-                        android:id="@+id/statusLamp"
+                        android:id="@+id/trackMainRow"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:layout_marginTop="16dp"
-                        android:background="@color/panel"
-                        android:gravity="center"
-                        android:orientation="vertical"
-                        android:padding="20dp">
-
-                        <TextView
-                            android:id="@+id/statusText"
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content"
-                            android:letterSpacing="0.16"
-                            android:text="@string/status_ready"
-                            android:textAllCaps="true"
-                            android:textColor="@color/ink"
-                            android:textSize="34sp"
-                            android:textStyle="bold" />
-
-                        <TextView
-                            android:id="@+id/statusHint"
-                            android:layout_width="match_parent"
-                            android:layout_height="wrap_content"
-                            android:layout_marginTop="4dp"
-                            android:gravity="center"
-                            android:text="@string/status_hint_ready"
-                            android:textColor="@color/muted"
-                            android:textSize="14sp" />
-                    </LinearLayout>
-
-                    <LinearLayout
-                        android:id="@+id/roadSectionBox"
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:layout_marginTop="12dp"
-                        android:background="@color/road_on"
-                        android:gravity="center"
-                        android:orientation="vertical"
-                        android:padding="16dp">
-
-                        <TextView
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content"
-                            android:text="ROAD SECTION"
-                            android:textAllCaps="true"
-                            android:textColor="@color/muted"
-                            android:textSize="13sp" />
-
-                        <TextView
-                            android:id="@+id/roadSectionRead"
-                            android:layout_width="match_parent"
-                            android:layout_height="wrap_content"
-                            android:layout_marginTop="4dp"
-                            android:gravity="center"
-                            android:text="Start tracking"
-                            android:textAllCaps="true"
-                            android:textColor="@color/road_text"
-                            android:textSize="22sp"
-                            android:textStyle="bold" />
-                    </LinearLayout>
-
-                    <LinearLayout
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:layout_marginTop="16dp"
-                        android:orientation="horizontal">
+                        android:layout_marginTop="@dimen/track_gap"
+                        android:orientation="vertical">
 
                         <LinearLayout
-                            android:layout_width="0dp"
+                            android:id="@+id/roadSectionBox"
+                            android:layout_width="match_parent"
                             android:layout_height="wrap_content"
-                            android:layout_marginEnd="1dp"
-                            android:layout_weight="1"
-                            android:background="@color/panel"
+                            android:background="@color/road_on"
+                            android:gravity="center"
                             android:orientation="vertical"
-                            android:padding="14dp">
+                            android:padding="@dimen/track_road_pad">
 
                             <TextView
-                                style="@style/RallyLabel"
+                                android:id="@+id/roadSectionLabel"
                                 android:layout_width="wrap_content"
                                 android:layout_height="wrap_content"
-                                android:text="Speed" />
+                                android:text="ROAD SECTION"
+                                android:textAllCaps="true"
+                                android:textColor="@color/muted"
+                                android:textSize="@dimen/track_road_label" />
 
                             <TextView
-                                android:id="@+id/speedRead"
-                                android:layout_width="wrap_content"
+                                android:id="@+id/roadSectionRead"
+                                android:layout_width="match_parent"
                                 android:layout_height="wrap_content"
-                                android:text="—"
-                                android:textColor="@color/ink"
-                                android:textSize="24sp" />
+                                android:layout_marginTop="2dp"
+                                android:gravity="center"
+                                android:text="Start tracking"
+                                android:textAllCaps="true"
+                                android:textColor="@color/road_text"
+                                android:textSize="@dimen/track_road_value"
+                                android:textStyle="bold" />
                         </LinearLayout>
 
                         <LinearLayout
-                            android:layout_width="0dp"
+                            android:id="@+id/telemetryRow"
+                            android:layout_width="match_parent"
                             android:layout_height="wrap_content"
-                            android:layout_marginStart="1dp"
-                            android:layout_weight="1"
-                            android:background="@color/panel"
-                            android:orientation="vertical"
-                            android:padding="14dp">
+                            android:layout_marginTop="@dimen/track_gap"
+                            android:orientation="horizontal">
 
-                            <TextView
-                                style="@style/RallyLabel"
-                                android:layout_width="wrap_content"
+                            <LinearLayout
+                                android:layout_width="0dp"
                                 android:layout_height="wrap_content"
-                                android:text="GPS" />
+                                android:layout_marginEnd="1dp"
+                                android:layout_weight="1"
+                                android:background="@color/panel"
+                                android:orientation="vertical"
+                                android:padding="@dimen/track_tele_pad">
 
-                            <TextView
-                                android:id="@+id/accRead"
-                                android:layout_width="wrap_content"
+                                <TextView
+                                    android:id="@+id/speedLabel"
+                                    style="@style/RallyLabel"
+                                    android:layout_width="wrap_content"
+                                    android:layout_height="wrap_content"
+                                    android:text="Speed" />
+
+                                <TextView
+                                    android:id="@+id/speedRead"
+                                    android:layout_width="wrap_content"
+                                    android:layout_height="wrap_content"
+                                    android:text="—"
+                                    android:textColor="@color/ink"
+                                    android:textSize="@dimen/track_tele_value" />
+                            </LinearLayout>
+
+                            <LinearLayout
+                                android:layout_width="0dp"
                                 android:layout_height="wrap_content"
-                                android:text="—"
-                                android:textColor="@color/ink"
-                                android:textSize="24sp" />
+                                android:layout_marginStart="1dp"
+                                android:layout_weight="1"
+                                android:background="@color/panel"
+                                android:orientation="vertical"
+                                android:padding="@dimen/track_tele_pad">
+
+                                <TextView
+                                    android:id="@+id/accLabel"
+                                    style="@style/RallyLabel"
+                                    android:layout_width="wrap_content"
+                                    android:layout_height="wrap_content"
+                                    android:text="GPS" />
+
+                                <TextView
+                                    android:id="@+id/accRead"
+                                    android:layout_width="wrap_content"
+                                    android:layout_height="wrap_content"
+                                    android:text="—"
+                                    android:textColor="@color/ink"
+                                    android:textSize="@dimen/track_tele_value" />
+                            </LinearLayout>
                         </LinearLayout>
                     </LinearLayout>
 
@@ -306,7 +302,7 @@
                         android:id="@+id/errorRead"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:layout_marginTop="8dp"
+                        android:layout_marginTop="4dp"
                         android:textColor="@color/stop"
                         android:textSize="14sp"
                         android:visibility="gone" />
@@ -314,8 +310,8 @@
                     <com.google.android.material.button.MaterialButton
                         android:id="@+id/toggleBtn"
                         android:layout_width="match_parent"
-                        android:layout_height="56dp"
-                        android:layout_marginTop="16dp"
+                        android:layout_height="@dimen/track_toggle_height"
+                        android:layout_marginTop="@dimen/track_gap"
                         android:backgroundTint="@color/go"
                         android:text="@string/start_tracking"
                         android:textColor="@color/black"
@@ -331,55 +327,91 @@
                     android:orientation="vertical"
                     android:visibility="gone">
 
-                    <TextView
-                        android:id="@+id/stageName"
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:background="@color/stage_bg"
-                        android:gravity="center"
-                        android:padding="18dp"
-                        android:text="STAGE"
-                        android:textAllCaps="true"
-                        android:textColor="@color/stop"
-                        android:textSize="28sp"
-                        android:textStyle="bold" />
-
                     <LinearLayout
+                        android:id="@+id/stageMainRow"
                         android:layout_width="match_parent"
-                        android:layout_height="220dp"
-                        android:layout_marginTop="12dp"
+                        android:layout_height="@dimen/stage_main_height"
                         android:orientation="horizontal">
 
                         <LinearLayout
-                            android:id="@+id/stageFlagBox"
                             android:layout_width="0dp"
                             android:layout_height="match_parent"
                             android:layout_marginEnd="6dp"
                             android:layout_weight="1"
-                            android:background="#10200c"
-                            android:gravity="center"
-                            android:orientation="vertical"
-                            android:padding="12dp">
+                            android:minHeight="0dp"
+                            android:orientation="vertical">
 
-                            <TextView
-                                android:layout_width="wrap_content"
+                            <LinearLayout
+                                android:id="@+id/stageNameRow"
+                                android:layout_width="match_parent"
                                 android:layout_height="wrap_content"
-                                android:text="STAGE STATUS"
-                                android:textAllCaps="true"
-                                android:textColor="@color/muted"
-                                android:textSize="14sp" />
+                                android:background="@color/stage_bg"
+                                android:gravity="center_vertical"
+                                android:orientation="horizontal"
+                                android:minHeight="40dp">
 
-                            <TextView
-                                android:id="@+id/stageFlag"
-                                android:layout_width="wrap_content"
-                                android:layout_height="wrap_content"
-                                android:layout_marginTop="8dp"
+                                <TextView
+                                    android:id="@+id/stageName"
+                                    android:layout_width="0dp"
+                                    android:layout_height="wrap_content"
+                                    android:layout_weight="1"
+                                    android:ellipsize="end"
+                                    android:gravity="center"
+                                    android:maxLines="1"
+                                    android:paddingStart="8dp"
+                                    android:paddingTop="8dp"
+                                    android:paddingEnd="4dp"
+                                    android:paddingBottom="8dp"
+                                    android:text="STAGE"
+                                    android:textAllCaps="true"
+                                    android:textColor="@color/stop"
+                                    android:textSize="18sp"
+                                    android:textStyle="bold" />
+
+                                <ImageButton
+                                    android:id="@+id/settingsBtnStage"
+                                    android:layout_width="40dp"
+                                    android:layout_height="40dp"
+                                    android:background="?attr/selectableItemBackgroundBorderless"
+                                    android:contentDescription="@string/settings_content_desc"
+                                    android:padding="8dp"
+                                    android:scaleType="centerInside"
+                                    android:src="@drawable/ic_settings"
+                                    app:tint="@color/stop" />
+                            </LinearLayout>
+
+                            <LinearLayout
+                                android:id="@+id/stageFlagBox"
+                                android:layout_width="match_parent"
+                                android:layout_height="0dp"
+                                android:layout_marginTop="6dp"
+                                android:layout_weight="1"
+                                android:background="#10200c"
                                 android:gravity="center"
-                                android:text="GREEN FLAG"
-                                android:textAllCaps="true"
-                                android:textColor="@color/go"
-                                android:textSize="32sp"
-                                android:textStyle="bold" />
+                                android:minHeight="0dp"
+                                android:orientation="vertical"
+                                android:padding="8dp">
+
+                                <TextView
+                                    android:layout_width="wrap_content"
+                                    android:layout_height="wrap_content"
+                                    android:text="STAGE STATUS"
+                                    android:textAllCaps="true"
+                                    android:textColor="@color/muted"
+                                    android:textSize="12sp" />
+
+                                <TextView
+                                    android:id="@+id/stageFlag"
+                                    android:layout_width="wrap_content"
+                                    android:layout_height="wrap_content"
+                                    android:layout_marginTop="4dp"
+                                    android:gravity="center"
+                                    android:text="GREEN FLAG"
+                                    android:textAllCaps="true"
+                                    android:textColor="@color/go"
+                                    android:textSize="26sp"
+                                    android:textStyle="bold" />
+                            </LinearLayout>
                         </LinearLayout>
 
                         <LinearLayout
@@ -387,6 +419,7 @@
                             android:layout_height="match_parent"
                             android:layout_marginStart="6dp"
                             android:layout_weight="1"
+                            android:minHeight="0dp"
                             android:orientation="vertical">
 
                             <FrameLayout
@@ -406,9 +439,9 @@
                                     android:clickable="false"
                                     android:focusable="false"
                                     android:maxLines="3"
-                                    android:text="OK\nHold 3s"
+                                    android:text="OK\nHold 2s"
                                     android:textColor="@color/black"
-                                    android:textSize="22sp"
+                                    android:textSize="20sp"
                                     android:textStyle="bold"
                                     app:cornerRadius="0dp" />
 
@@ -440,9 +473,9 @@
                                     android:clickable="false"
                                     android:focusable="false"
                                     android:maxLines="3"
-                                    android:text="SOS\nHold 3s"
+                                    android:text="SOS\nHold 2s"
                                     android:textColor="@android:color/white"
-                                    android:textSize="22sp"
+                                    android:textSize="20sp"
                                     android:textStyle="bold"
                                     app:cornerRadius="0dp" />
 
@@ -463,10 +496,11 @@
                         android:id="@+id/crewStatusBanner"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:layout_marginTop="12dp"
+                        android:layout_marginTop="8dp"
                         android:gravity="center"
                         android:orientation="vertical"
-                        android:padding="12dp"
+                        android:paddingHorizontal="10dp"
+                        android:paddingVertical="6dp"
                         android:visibility="gone">
 
                         <TextView
@@ -477,7 +511,7 @@
                             android:text="YOU CONFIRMED"
                             android:textAllCaps="true"
                             android:textColor="@color/muted"
-                            android:textSize="14sp" />
+                            android:textSize="12sp" />
 
                         <TextView
                             android:id="@+id/crewStatusRead"
@@ -486,7 +520,7 @@
                             android:gravity="center"
                             android:text="GREEN OK"
                             android:textAllCaps="true"
-                            android:textSize="34sp"
+                            android:textSize="26sp"
                             android:textStyle="bold" />
 
                         <TextView
@@ -494,132 +528,154 @@
                             android:layout_width="match_parent"
                             android:layout_height="wrap_content"
                             android:gravity="center"
-                            android:paddingTop="4dp"
-                            android:text="Hold the other button 3 seconds to change."
+                            android:paddingTop="2dp"
+                            android:text="Hold the other button 2 seconds to change."
                             android:textAllCaps="true"
                             android:textColor="@color/ink"
-                            android:textSize="16sp" />
+                            android:textSize="12sp" />
                     </LinearLayout>
 
                     <TextView
                         android:id="@+id/stageSpeed"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:layout_marginTop="12dp"
+                        android:layout_marginTop="4dp"
                         android:gravity="center"
                         android:text="—"
                         android:textColor="@color/ink"
-                        android:textSize="22sp" />
+                        android:textSize="16sp" />
 
                     <TextView
                         android:id="@+id/stageLockNote"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:layout_marginTop="8dp"
+                        android:layout_marginTop="2dp"
                         android:gravity="center"
                         android:text="@string/stage_lock_note"
                         android:textColor="@color/amber"
-                        android:textSize="14sp"
+                        android:textSize="12sp"
                         android:visibility="gone" />
                 </LinearLayout>
 
-                <LinearLayout
-                    android:id="@+id/crewAlert"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:background="@color/bg"
-                    android:orientation="vertical"
-                    android:padding="12dp"
-                    android:visibility="gone">
-
-                    <TextView
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:gravity="center"
-                        android:padding="12dp"
-                        android:text="STOPPED ON STAGE"
-                        android:textAllCaps="true"
-                        android:textColor="@color/amber"
-                        android:textSize="26sp"
-                        android:textStyle="bold" />
-
-                    <TextView
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:gravity="center"
-                        android:paddingBottom="16dp"
-                        android:text="If you had an off or accident, confirm both crew are OK. Hold GREEN OK or RED SOS for 3 seconds."
-                        android:textColor="@color/ink"
-                        android:textSize="18sp" />
-
-                    <FrameLayout
-                        android:id="@+id/alertOkHoldWrap"
-                        android:layout_width="match_parent"
-                        android:layout_height="120dp"
-                        android:layout_marginBottom="10dp"
-                        android:clickable="true"
-                        android:focusable="true">
-
-                        <com.google.android.material.button.MaterialButton
-                            android:id="@+id/alertOkBtn"
-                            android:layout_width="match_parent"
-                            android:layout_height="match_parent"
-                            android:backgroundTint="@color/go"
-                            android:clickable="false"
-                            android:focusable="false"
-                            android:maxLines="3"
-                            android:text="GREEN OK\nHold 3s · Both crew OK"
-                            android:textColor="@color/black"
-                            android:textSize="24sp"
-                            android:textStyle="bold"
-                            app:cornerRadius="0dp" />
-
-                        <View
-                            android:id="@+id/alertOkHoldFill"
-                            android:layout_width="match_parent"
-                            android:layout_height="match_parent"
-                            android:background="#55FFFFFF"
-                            android:clickable="false"
-                            android:focusable="false"
-                            android:scaleX="0"
-                            android:transformPivotX="0dp" />
-                    </FrameLayout>
-
-                    <FrameLayout
-                        android:id="@+id/alertSosHoldWrap"
-                        android:layout_width="match_parent"
-                        android:layout_height="120dp"
-                        android:clickable="true"
-                        android:focusable="true">
-
-                        <com.google.android.material.button.MaterialButton
-                            android:id="@+id/alertSosBtn"
-                            android:layout_width="match_parent"
-                            android:layout_height="match_parent"
-                            android:backgroundTint="@color/stop"
-                            android:clickable="false"
-                            android:focusable="false"
-                            android:maxLines="3"
-                            android:text="RED SOS\nHold 3s · Need help"
-                            android:textColor="@android:color/white"
-                            android:textSize="24sp"
-                            android:textStyle="bold"
-                            app:cornerRadius="0dp" />
-
-                        <View
-                            android:id="@+id/alertSosHoldFill"
-                            android:layout_width="match_parent"
-                            android:layout_height="match_parent"
-                            android:background="#55FFFFFF"
-                            android:clickable="false"
-                            android:focusable="false"
-                            android:scaleX="0"
-                            android:transformPivotX="0dp" />
-                    </FrameLayout>
-                </LinearLayout>
             </FrameLayout>
         </LinearLayout>
     </ScrollView>
+
+    <LinearLayout
+        android:id="@+id/crewAlert"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:background="@color/bg"
+        android:clickable="true"
+        android:elevation="20dp"
+        android:focusable="true"
+        android:gravity="center"
+        android:orientation="vertical"
+        android:paddingHorizontal="16dp"
+        android:paddingVertical="12dp"
+        android:visibility="gone">
+
+        <TextView
+            android:id="@+id/crewAlertTitle"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:gravity="center"
+            android:letterSpacing="0.08"
+            android:text="STOPPED ON STAGE"
+            android:textAllCaps="true"
+            android:textColor="@color/amber"
+            android:textSize="@dimen/crew_alert_title"
+            android:textStyle="bold" />
+
+        <TextView
+            android:id="@+id/crewAlertCopy"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="6dp"
+            android:gravity="center"
+            android:text="If you had an off or accident, confirm both crew are OK. Hold GREEN OK or RED SOS for 2 seconds."
+            android:textColor="@color/ink"
+            android:textSize="@dimen/crew_alert_copy" />
+
+        <LinearLayout
+            android:id="@+id/crewAlertButtons"
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_marginTop="12dp"
+            android:layout_weight="1"
+            android:orientation="vertical">
+
+            <FrameLayout
+                android:id="@+id/alertOkHoldWrap"
+                android:layout_width="match_parent"
+                android:layout_height="0dp"
+                android:layout_weight="1"
+                android:clickable="true"
+                android:focusable="true"
+                android:minHeight="@dimen/crew_alert_btn_min">
+
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/alertOkBtn"
+                    android:layout_width="match_parent"
+                    android:layout_height="match_parent"
+                    android:backgroundTint="@color/go"
+                    android:clickable="false"
+                    android:focusable="false"
+                    android:gravity="center"
+                    android:maxLines="3"
+                    android:text="GREEN OK\nHold 2s · Both crew OK"
+                    android:textColor="@color/black"
+                    android:textSize="@dimen/crew_alert_btn_text"
+                    android:textStyle="bold"
+                    app:cornerRadius="0dp" />
+
+                <View
+                    android:id="@+id/alertOkHoldFill"
+                    android:layout_width="match_parent"
+                    android:layout_height="match_parent"
+                    android:background="#55FFFFFF"
+                    android:clickable="false"
+                    android:focusable="false"
+                    android:scaleX="0"
+                    android:transformPivotX="0dp" />
+            </FrameLayout>
+
+            <FrameLayout
+                android:id="@+id/alertSosHoldWrap"
+                android:layout_width="match_parent"
+                android:layout_height="0dp"
+                android:layout_weight="1"
+                android:clickable="true"
+                android:focusable="true"
+                android:minHeight="@dimen/crew_alert_btn_min">
+
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/alertSosBtn"
+                    android:layout_width="match_parent"
+                    android:layout_height="match_parent"
+                    android:backgroundTint="@color/stop"
+                    android:clickable="false"
+                    android:focusable="false"
+                    android:gravity="center"
+                    android:maxLines="3"
+                    android:text="RED SOS\nHold 2s · Need help"
+                    android:textColor="@android:color/white"
+                    android:textSize="@dimen/crew_alert_btn_text"
+                    android:textStyle="bold"
+                    app:cornerRadius="0dp" />
+
+                <View
+                    android:id="@+id/alertSosHoldFill"
+                    android:layout_width="match_parent"
+                    android:layout_height="match_parent"
+                    android:background="#55FFFFFF"
+                    android:clickable="false"
+                    android:focusable="false"
+                    android:scaleX="0"
+                    android:transformPivotX="0dp" />
+            </FrameLayout>
+        </LinearLayout>
+    </LinearLayout>
 
     <LinearLayout
         android:id="@+id/redFlagAlert"

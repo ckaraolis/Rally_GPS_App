@@ -7,7 +7,7 @@
   <meta name="robots" content="noindex" />
   <title>TEST DRIVER · Rally GPS</title>
   <link rel="icon" href="/icons/icon.svg" type="image/svg+xml" />
-  <link rel="stylesheet" href="/css/app.css?v=stoplock2" />
+  <link rel="stylesheet" href="/css/app.css?v=apkparity6" />
 </head>
 <body class="driver-body test-mode test-driver-body">
   <script>window.RALLY_TEST_MODE = true;</script>
@@ -63,25 +63,30 @@
     </section>
 
     <section id="stagePanel" class="stage-panel hidden">
-      <div id="stageName" class="stage-name">SPECIAL STAGE</div>
       <div class="stage-grid">
-        <div class="stage-flag-box">
-          <small>STAGE STATUS</small>
-          <strong id="stageFlag">GREEN FLAG</strong>
+        <div class="stage-col-left">
+          <div class="stage-name-row">
+            <div id="stageName" class="stage-name">SPECIAL STAGE</div>
+            <button id="settingsBtnStage" type="button" class="settings-gear stage-settings-btn" aria-label="Settings" title="Settings">⚙</button>
+          </div>
+          <div class="stage-flag-box">
+            <small>STAGE STATUS</small>
+            <strong id="stageFlag">GREEN FLAG</strong>
+          </div>
         </div>
         <div class="stage-actions">
-          <button id="okBtn" type="button" class="btn btn-start stage-half hold-btn" aria-label="Hold 3 seconds to send GREEN OK">
+          <button id="okBtn" type="button" class="btn btn-start stage-half hold-btn" aria-label="Hold 2 seconds to send GREEN OK">
             <span class="hold-fill" aria-hidden="true"></span>
             <span class="hold-copy">
               <span class="hold-title">OK</span>
-              <small class="hold-hint">Hold 3 seconds</small>
+              <small class="hold-hint">Hold 2 seconds</small>
             </span>
           </button>
-          <button id="sosBtn" type="button" class="btn btn-stop stage-half hold-btn" aria-label="Hold 3 seconds to send RED SOS">
+          <button id="sosBtn" type="button" class="btn btn-stop stage-half hold-btn" aria-label="Hold 2 seconds to send RED SOS">
             <span class="hold-fill" aria-hidden="true"></span>
             <span class="hold-copy">
               <span class="hold-title">SOS</span>
-              <small class="hold-hint">Hold 3 seconds</small>
+              <small class="hold-hint">Hold 2 seconds</small>
             </span>
           </button>
         </div>
@@ -89,7 +94,7 @@
       <div id="crewStatusBanner" class="crew-status-banner hidden" role="status" aria-live="polite">
         <small>YOU CONFIRMED</small>
         <strong id="crewStatusRead">GREEN OK</strong>
-        <p id="crewStatusHint">Hold the other button 3 seconds to change.</p>
+        <p id="crewStatusHint">Hold the other button 2 seconds to change.</p>
       </div>
       <p id="stageSpeed" class="coords">—</p>
       <button id="stageStopBtn" type="button" class="btn btn-stop hidden">Stop tracking</button>
@@ -97,19 +102,19 @@
 
     <section id="crewAlert" class="crew-alert hidden">
       <h2>STOPPED ON STAGE</h2>
-      <p>If you had an off or accident, confirm both crew are OK. Hold GREEN OK or RED SOS for 3 seconds.</p>
-      <button id="alertOkBtn" type="button" class="btn btn-start alert-btn hold-btn" aria-label="Hold 3 seconds to send GREEN OK">
+      <p>If you had an off or accident, confirm both crew are OK. Hold GREEN OK or RED SOS for 2 seconds.</p>
+      <button id="alertOkBtn" type="button" class="btn btn-start alert-btn hold-btn" aria-label="Hold 2 seconds to send GREEN OK">
         <span class="hold-fill" aria-hidden="true"></span>
         <span class="hold-copy">
           <span class="hold-title">GREEN OK</span>
-          <small class="hold-hint">Both crew OK · Hold 3s</small>
+          <small class="hold-hint">Both crew OK · Hold 2s</small>
         </span>
       </button>
-      <button id="alertSosBtn" type="button" class="btn btn-stop alert-btn hold-btn" aria-label="Hold 3 seconds to send RED SOS">
+      <button id="alertSosBtn" type="button" class="btn btn-stop alert-btn hold-btn" aria-label="Hold 2 seconds to send RED SOS">
         <span class="hold-fill" aria-hidden="true"></span>
         <span class="hold-copy">
           <span class="hold-title">RED SOS</span>
-          <small class="hold-hint">Need help · Hold 3s</small>
+          <small class="hold-hint">Need help · Hold 2s</small>
         </span>
       </button>
     </section>
@@ -120,6 +125,6 @@
       <button id="redFlagOkBtn" type="button" class="btn btn-amber alert-btn">OK<small>CONFIRMED</small></button>
     </section>
   </main>
-  <script src="/js/driver.js?v=stoplock2"></script>
+  <script src="/js/driver.js?v=apkparity6"></script>
 </body>
 </html>

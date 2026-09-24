@@ -29,7 +29,10 @@ import com.google.android.gms.tasks.CancellationTokenSource
 import java.util.concurrent.Executors
 
 class TrackingService : Service() {
+    // GPS upload queue — must stay single-threaded so batches stay ordered.
     private val executor = Executors.newSingleThreadExecutor()
+    // OK / SOS / flag-ack must not wait behind a slow ping-batch (25s read timeout).
+    private val urgentExecutor = Executors.newSingleThreadExecutor()
     private val handler = Handler(Looper.getMainLooper())
     private val fused by lazy { LocationServices.getFusedLocationProviderClient(this) }
     private var api: RallyApi? = null
@@ -55,6 +58,7 @@ class TrackingService : Service() {
 
     private val locationCallback = object : LocationCallback() {
         override fun onLocationResult(result: LocationResult) {
+            if (!running) return
             val location = result.lastLocation ?: return
             lastLocation = location
             val heading = if (location.hasBearing()) location.bearing else null
@@ -96,7 +100,7 @@ class TrackingService : Service() {
                 val current = session ?: SessionStore.load(this)
                 val client = api ?: current?.let { RallyApi(it.serverUrl) }
                 if (current != null && client != null) {
-                    executor.execute {
+                    urgentExecutor.execute {
                         runCatching { client.crewStatus(current.id, current.token, status) }
                     }
                 }
@@ -106,7 +110,7 @@ class TrackingService : Service() {
                 val current = session ?: SessionStore.load(this)
                 val client = api ?: current?.let { RallyApi(it.serverUrl) }
                 if (current != null && client != null) {
-                    executor.execute {
+                    urgentExecutor.execute {
                         runCatching { client.ackFlag(current.id, current.token) }
                     }
                 }
@@ -192,9 +196,10 @@ class TrackingService : Service() {
         releaseWakeLock()
         val current = session
         val client = api
+        // Flush any leftover points quietly — never rebroadcast tracking=true after stop.
         if (current != null && client != null) {
             executor.execute {
-                flushQueue()
+                flushQueue(broadcastStatus = false)
                 runCatching { client.stop(current.id, current.token, code) }
             }
         }
@@ -211,16 +216,20 @@ class TrackingService : Service() {
         unregisterNetworkCallback()
         releaseWakeLock()
         executor.shutdownNow()
+        urgentExecutor.shutdownNow()
         super.onDestroy()
     }
 
     private fun pollAndRefresh() {
+        if (!running) return
         if (wakeLock?.isHeld != true) acquireWakeLock()
         val current = session ?: return
         val client = api ?: return
         executor.execute {
+            if (!running) return@execute
             val poll = runCatching { client.poll(current.id, current.token) }.getOrNull()
             handler.post {
+                if (!running) return@post
                 if (poll != null) {
                     broadcast(
                         tracking = true,
@@ -240,16 +249,19 @@ class TrackingService : Service() {
     }
 
     private fun sendFreshFix() {
+        if (!running) return
         val current = session ?: return
         try {
             fused.getCurrentLocation(
                 Priority.PRIORITY_HIGH_ACCURACY,
                 CancellationTokenSource().token
             ).addOnSuccessListener { location ->
+                if (!running) return@addOnSuccessListener
                 val fix = location ?: lastLocation ?: return@addOnSuccessListener
                 lastLocation = fix
                 queueAndFlush(fix)
             }.addOnFailureListener {
+                if (!running) return@addOnFailureListener
                 val fix = lastLocation ?: return@addOnFailureListener
                 queueAndFlush(fix)
             }
@@ -259,13 +271,15 @@ class TrackingService : Service() {
     }
 
     private fun queueAndFlush(location: Location) {
+        if (!running) return
         executor.execute {
+            if (!running) return@execute
             FixQueue.enqueue(this, FixQueue.Fix.from(location))
             flushQueue()
         }
     }
 
-    private fun flushQueue() {
+    private fun flushQueue(broadcastStatus: Boolean = true) {
         if (flushing) return
         val current = session ?: return
         val client = api ?: return
@@ -279,40 +293,45 @@ class TrackingService : Service() {
                     FixQueue.removeFirst(this, batch.size)
                     lastPingOkAt = System.currentTimeMillis()
                     val last = batch.last()
-                    broadcast(
-                        tracking = true,
-                        lat = last.lat,
-                        lon = last.lon,
-                        speed = last.speed,
-                        heading = last.heading,
-                        accuracy = last.accuracy,
-                        sent = true,
-                        queued = FixQueue.size(this),
-                        sectionType = ping.sectionType,
-                        sectionName = ping.sectionName,
-                        sectionLabel = ping.sectionLabel,
-                        sectionId = ping.sectionId,
-                        flagStatus = ping.flagStatus,
-                        flagTs = ping.flagTs,
-                        flagAcked = ping.flagAcked,
-                        stopLock = ping.stopLock
-                    )
+                    // Never rebroadcast tracking=true after the user has stopped.
+                    if (broadcastStatus && running) {
+                        broadcast(
+                            tracking = true,
+                            lat = last.lat,
+                            lon = last.lon,
+                            speed = last.speed,
+                            heading = last.heading,
+                            accuracy = last.accuracy,
+                            sent = true,
+                            queued = FixQueue.size(this),
+                            sectionType = ping.sectionType,
+                            sectionName = ping.sectionName,
+                            sectionLabel = ping.sectionLabel,
+                            sectionId = ping.sectionId,
+                            flagStatus = ping.flagStatus,
+                            flagTs = ping.flagTs,
+                            flagAcked = ping.flagAcked,
+                            stopLock = ping.stopLock
+                        )
+                    }
                 } catch (error: Exception) {
                     if (error.message?.contains("Unknown car", ignoreCase = true) == true) {
                         running = false
                     }
-                    val last = lastLocation
-                    broadcast(
-                        tracking = true,
-                        lat = last?.latitude,
-                        lon = last?.longitude,
-                        speed = last?.takeIf { it.hasSpeed() }?.speed,
-                        heading = last?.takeIf { it.hasBearing() }?.bearing,
-                        accuracy = last?.takeIf { it.hasAccuracy() }?.accuracy,
-                        sent = false,
-                        queued = FixQueue.size(this),
-                        error = "queued"
-                    )
+                    if (broadcastStatus && running) {
+                        val last = lastLocation
+                        broadcast(
+                            tracking = true,
+                            lat = last?.latitude,
+                            lon = last?.longitude,
+                            speed = last?.takeIf { it.hasSpeed() }?.speed,
+                            heading = last?.takeIf { it.hasBearing() }?.bearing,
+                            accuracy = last?.takeIf { it.hasAccuracy() }?.accuracy,
+                            sent = false,
+                            queued = FixQueue.size(this),
+                            error = "queued"
+                        )
+                    }
                     break
                 }
             }

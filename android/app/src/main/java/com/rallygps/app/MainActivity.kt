@@ -6,10 +6,14 @@ import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.content.pm.PackageManager
+import android.content.res.Configuration
 import android.animation.ValueAnimator
 import android.graphics.Color
+import android.widget.LinearLayout
 import android.media.AudioAttributes
 import android.media.MediaPlayer
+import android.net.ConnectivityManager
+import android.net.NetworkCapabilities
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
@@ -26,6 +30,7 @@ import android.view.View
 import android.widget.EditText
 import android.widget.RadioButton
 import android.widget.RadioGroup
+import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.OnBackPressedCallback
 import androidx.activity.result.contract.ActivityResultContracts
@@ -130,18 +135,31 @@ class MainActivity : AppCompatActivity() {
     private val statusReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
             if (intent?.action != TrackingActions.STATUS) return
-            tracking = intent.getBooleanExtra(TrackingActions.EXTRA_TRACKING, false)
+            var reportedTracking = intent.getBooleanExtra(TrackingActions.EXTRA_TRACKING, false)
+            // Ignore stale post-stop broadcasts that would resurrect "tracking" UI
+            // (and stick the No GSM hint) after the service has already stopped.
+            if (reportedTracking &&
+                !TrackingService.isActive &&
+                !SessionStore.trackingWanted(this@MainActivity)
+            ) {
+                reportedTracking = false
+            }
+            tracking = reportedTracking
 
             val error = intent.getStringExtra(TrackingActions.EXTRA_ERROR)
             val queued = intent.getIntExtra(TrackingActions.EXTRA_QUEUED, 0)
             val sent = intent.getBooleanExtra(TrackingActions.EXTRA_SENT, false)
-            if (!error.isNullOrBlank() && error != "queued") {
+            if (!tracking) {
+                clearNetworkHint()
+            } else if (!error.isNullOrBlank() && error != "queued") {
                 showError(error)
-            } else if (error == "queued" || queued > 0) {
+            } else if ((error == "queued" || queued > 0) && !hasValidatedInternet()) {
+                // Only show No GSM when the phone truly has no validated data path.
+                // A single failed ping with 5G up must not stick this message.
                 binding.errorRead.visibility = View.VISIBLE
                 binding.errorRead.text = getString(R.string.status_hint_queued)
-            } else if (sent) {
-                binding.errorRead.visibility = View.GONE
+            } else if (sent || hasValidatedInternet()) {
+                clearNetworkHint()
             }
 
             if (intent.hasExtra(TrackingActions.EXTRA_SECTION_TYPE)) {
@@ -244,11 +262,15 @@ class MainActivity : AppCompatActivity() {
         binding.continueBtn.setOnClickListener { joinRally() }
         binding.toggleBtn.setOnClickListener { ensurePermissionsAndStart() }
         binding.settingsBtn.setOnClickListener { showSettingsSheet() }
+        binding.settingsBtnStage.setOnClickListener { showSettingsSheet() }
+        binding.settingsBtnTrack.setOnClickListener { showSettingsSheet() }
 
         bindHold(binding.okHoldWrap, binding.okHoldFill, "ok")
         bindHold(binding.sosHoldWrap, binding.sosHoldFill, "sos")
         bindHold(binding.alertOkHoldWrap, binding.alertOkHoldFill, "ok")
         bindHold(binding.alertSosHoldWrap, binding.alertSosHoldFill, "sos")
+        layoutCrewAlertButtons()
+        applyCrewAlertChromeFromDimens()
         applyCrewStatusUi()
         maybeHandleStopRequest(intent)
         binding.redFlagOkBtn.setOnClickListener {
@@ -297,6 +319,8 @@ class MainActivity : AppCompatActivity() {
         val themeLight = view.findViewById<RadioButton>(R.id.themeLight)
         val changeCarBtn = view.findViewById<MaterialButton>(R.id.settingsChangeCarBtn)
         val stopBtn = view.findViewById<MaterialButton>(R.id.settingsStopBtn)
+        val statusText = view.findViewById<TextView>(R.id.settingsStatusText)
+        val statusHint = view.findViewById<TextView>(R.id.settingsStatusHint)
 
         if (SessionStore.isDarkTheme(this)) themeDark.isChecked = true else themeLight.isChecked = true
 
@@ -308,6 +332,20 @@ class MainActivity : AppCompatActivity() {
         }
 
         val active = tracking || TrackingService.isActive
+        if (active) {
+            statusText.setText(R.string.settings_status_tracking)
+            statusText.setTextColor(ContextCompat.getColor(this, R.color.go))
+            statusHint.setText(
+                if (stopLock == true) R.string.status_hint_locked_short else R.string.status_hint_tracking
+            )
+            statusHint.visibility = View.VISIBLE
+        } else {
+            statusText.setText(R.string.settings_status_ready)
+            statusText.setTextColor(ContextCompat.getColor(this, R.color.ink))
+            statusHint.setText(R.string.status_hint_ready)
+            statusHint.visibility = View.VISIBLE
+        }
+
         stopBtn.visibility = if (active) View.VISIBLE else View.GONE
         stopBtn.setOnClickListener {
             sheet.dismiss()
@@ -344,6 +382,62 @@ class MainActivity : AppCompatActivity() {
         super.onNewIntent(intent)
         setIntent(intent)
         maybeHandleStopRequest(intent)
+    }
+
+    override fun onConfigurationChanged(newConfig: android.content.res.Configuration) {
+        super.onConfigurationChanged(newConfig)
+        applyTrackChromeFromDimens()
+        layoutCrewAlertButtons()
+        applyCrewAlertChromeFromDimens()
+        renderMode()
+    }
+
+    private fun applyCrewAlertChromeFromDimens() {
+        if (!::binding.isInitialized) return
+        val density = resources.displayMetrics.scaledDensity
+        binding.crewAlertTitle.textSize =
+            resources.getDimension(R.dimen.crew_alert_title) / density
+        binding.crewAlertCopy.textSize =
+            resources.getDimension(R.dimen.crew_alert_copy) / density
+        val btnSp = resources.getDimension(R.dimen.crew_alert_btn_text) / density
+        binding.alertOkBtn.textSize = btnSp
+        binding.alertSosBtn.textSize = btnSp
+    }
+
+    /** Re-apply road/track paddings & text sizes after landscape/portrait switch (configChanges). */
+    private fun applyTrackChromeFromDimens() {
+        val platePad = resources.getDimensionPixelSize(R.dimen.track_plate_pad)
+        binding.plateRow.setPadding(platePad, platePad, platePad, platePad)
+        binding.plateNumber.textSize = resources.getDimension(R.dimen.track_plate_number) /
+            resources.displayMetrics.scaledDensity
+        binding.plateName.textSize = resources.getDimension(R.dimen.track_plate_name) /
+            resources.displayMetrics.scaledDensity
+        val roadPad = resources.getDimensionPixelSize(R.dimen.track_road_pad)
+        binding.roadSectionBox.setPadding(roadPad, roadPad, roadPad, roadPad)
+        binding.roadSectionLabel.textSize = resources.getDimension(R.dimen.track_road_label) /
+            resources.displayMetrics.scaledDensity
+        binding.roadSectionRead.textSize = resources.getDimension(R.dimen.track_road_value) /
+            resources.displayMetrics.scaledDensity
+        val telePad = resources.getDimensionPixelSize(R.dimen.track_tele_pad)
+        for (i in 0 until binding.telemetryRow.childCount) {
+            binding.telemetryRow.getChildAt(i).setPadding(telePad, telePad, telePad, telePad)
+        }
+        binding.speedRead.textSize = resources.getDimension(R.dimen.track_tele_value) /
+            resources.displayMetrics.scaledDensity
+        binding.accRead.textSize = resources.getDimension(R.dimen.track_tele_value) /
+            resources.displayMetrics.scaledDensity
+        val toggleLp = binding.toggleBtn.layoutParams
+        toggleLp.height = resources.getDimensionPixelSize(R.dimen.track_toggle_height)
+        binding.toggleBtn.layoutParams = toggleLp
+        val gap = resources.getDimensionPixelSize(R.dimen.track_gap)
+        (binding.trackMainRow.layoutParams as? android.view.ViewGroup.MarginLayoutParams)?.let {
+            it.topMargin = gap
+            binding.trackMainRow.layoutParams = it
+        }
+        (binding.toggleBtn.layoutParams as? android.view.ViewGroup.MarginLayoutParams)?.let {
+            it.topMargin = gap
+            binding.toggleBtn.layoutParams = it
+        }
     }
 
     override fun onStart() {
@@ -427,8 +521,9 @@ class MainActivity : AppCompatActivity() {
 
     private fun showCrewAlert() {
         if (shouldShowRedFlag()) return
+        // GPS updates keep calling this while stopped — never cancel an in-progress hold.
+        if (crewAlertVisible && binding.crewAlert.visibility == View.VISIBLE) return
         dismissStopDialog()
-        cancelHold()
         crewAlertVisible = true
         binding.crewAlert.visibility = View.VISIBLE
         binding.trackPanel.visibility = View.GONE
@@ -436,6 +531,36 @@ class MainActivity : AppCompatActivity() {
         binding.setupPanel.visibility = View.GONE
         binding.alertOkBtn.text = idleHoldLabel("ok", alert = true, change = false)
         binding.alertSosBtn.text = idleHoldLabel("sos", alert = true, change = false)
+        layoutCrewAlertButtons()
+    }
+
+    private fun layoutCrewAlertButtons() {
+        if (!::binding.isInitialized) return
+        val landscape =
+            resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
+        val gap = resources.getDimensionPixelSize(R.dimen.crew_alert_btn_gap)
+        binding.crewAlertButtons.orientation =
+            if (landscape) LinearLayout.HORIZONTAL else LinearLayout.VERTICAL
+        fun applyGaps(wrap: View, endOfFirst: Boolean) {
+            val lp = wrap.layoutParams as LinearLayout.LayoutParams
+            lp.width = if (landscape) 0 else LinearLayout.LayoutParams.MATCH_PARENT
+            lp.height = 0
+            lp.weight = 1f
+            if (landscape) {
+                lp.topMargin = 0
+                lp.bottomMargin = 0
+                lp.marginStart = if (endOfFirst) 0 else gap / 2
+                lp.marginEnd = if (endOfFirst) gap / 2 else 0
+            } else {
+                lp.marginStart = 0
+                lp.marginEnd = 0
+                lp.topMargin = if (endOfFirst) 0 else gap / 2
+                lp.bottomMargin = if (endOfFirst) gap / 2 else 0
+            }
+            wrap.layoutParams = lp
+        }
+        applyGaps(binding.alertOkHoldWrap, endOfFirst = true)
+        applyGaps(binding.alertSosHoldWrap, endOfFirst = false)
     }
 
     private fun hideCrewAlert() {
@@ -557,6 +682,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun bindHold(wrap: View, fill: View, status: String) {
+        val slop = (24 * resources.displayMetrics.density).toInt()
         wrap.setOnTouchListener { view, event ->
             when (event.actionMasked) {
                 MotionEvent.ACTION_DOWN -> {
@@ -568,7 +694,9 @@ class MainActivity : AppCompatActivity() {
                     beginHold(fill, status)
                 }
                 MotionEvent.ACTION_MOVE -> {
-                    if (event.x < 0 || event.y < 0 || event.x > view.width || event.y > view.height) {
+                    if (event.x < -slop || event.y < -slop ||
+                        event.x > view.width + slop || event.y > view.height + slop
+                    ) {
                         view.parent?.requestDisallowInterceptTouchEvent(false)
                         cancelHold()
                     }
@@ -652,6 +780,9 @@ class MainActivity : AppCompatActivity() {
             binding.sosBtn.text = idleHoldLabel("sos", alert = false, change = false)
             binding.alertOkBtn.text = idleHoldLabel("ok", alert = true, change = false)
             binding.alertSosBtn.text = idleHoldLabel("sos", alert = true, change = false)
+            if (binding.stagePanel.visibility == View.VISIBLE) {
+                binding.contentScroll.post { fitStageMainRowHeight() }
+            }
             return
         }
         val ok = status == "ok"
@@ -664,26 +795,29 @@ class MainActivity : AppCompatActivity() {
             ContextCompat.getColor(this, if (ok) R.color.go else R.color.stop)
         )
         binding.crewStatusHint.text = if (ok) {
-            "You confirmed OK. Hold SOS 3 seconds to change."
+            "You confirmed OK. Hold SOS 2 seconds to change."
         } else {
-            "You confirmed SOS. Hold OK 3 seconds to change."
+            "You confirmed SOS. Hold OK 2 seconds to change."
         }
         binding.okBtn.text = if (ok) sentHoldLabel("ok", false) else idleHoldLabel("ok", false, true)
         binding.sosBtn.text = if (!ok) sentHoldLabel("sos", false) else idleHoldLabel("sos", false, true)
         binding.alertOkBtn.text = if (ok) sentHoldLabel("ok", true) else idleHoldLabel("ok", true, true)
         binding.alertSosBtn.text = if (!ok) sentHoldLabel("sos", true) else idleHoldLabel("sos", true, true)
+        if (binding.stagePanel.visibility == View.VISIBLE) {
+            binding.crewStatusBanner.post { fitStageMainRowHeight() }
+        }
     }
 
     private fun idleHoldLabel(status: String, alert: Boolean, change: Boolean): String {
         return when {
-            alert && status == "ok" && change -> "GREEN OK\nHold 3s to change"
-            alert && status == "sos" && change -> "RED SOS\nHold 3s to change"
-            alert && status == "ok" -> "GREEN OK\nHold 3s · Both crew OK"
-            alert && status == "sos" -> "RED SOS\nHold 3s · Need help"
-            status == "ok" && change -> "OK\nHold 3s to change"
-            status == "sos" && change -> "SOS\nHold 3s to change"
-            status == "ok" -> "OK\nHold 3s"
-            else -> "SOS\nHold 3s"
+            alert && status == "ok" && change -> "GREEN OK\nHold 2s to change"
+            alert && status == "sos" && change -> "RED SOS\nHold 2s to change"
+            alert && status == "ok" -> "GREEN OK\nHold 2s · Both crew OK"
+            alert && status == "sos" -> "RED SOS\nHold 2s · Need help"
+            status == "ok" && change -> "OK\nHold 2s to change"
+            status == "sos" && change -> "SOS\nHold 2s to change"
+            status == "ok" -> "OK\nHold 2s"
+            else -> "SOS\nHold 2s"
         }
     }
 
@@ -847,6 +981,7 @@ class MainActivity : AppCompatActivity() {
         }
         SessionStore.setTrackingWanted(this, true)
         if (promptBattery) askUnrestrictedBattery()
+        clearNetworkHint()
         val intent = Intent(this, TrackingService::class.java)
         ContextCompat.startForegroundService(this, intent)
         tracking = true
@@ -1014,16 +1149,31 @@ class MainActivity : AppCompatActivity() {
         sectionType = null
         sectionLabel = null
         stageId = null
+        clearNetworkHint()
         hideCrewAlert()
         hideRedFlagAlert()
         resetCrewStatusUi()
         renderMode()
     }
 
+    private fun clearNetworkHint() {
+        binding.errorRead.visibility = View.GONE
+        binding.errorRead.text = ""
+    }
+
+    private fun hasValidatedInternet(): Boolean {
+        val cm = getSystemService(ConnectivityManager::class.java) ?: return true
+        val network = cm.activeNetwork ?: return false
+        val caps = cm.getNetworkCapabilities(network) ?: return false
+        return caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) &&
+            caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED)
+    }
+
     private fun showSetupPanel() {
         binding.setupPanel.visibility = View.VISIBLE
         binding.trackPanel.visibility = View.GONE
         binding.stagePanel.visibility = View.GONE
+        binding.topBar.visibility = View.VISIBLE
         hideCrewAlert()
         hideRedFlagAlert()
         binding.serverUrl.setText(SessionStore.loadServerUrl(this))
@@ -1053,24 +1203,20 @@ class MainActivity : AppCompatActivity() {
         if (tracking && inStage) {
             binding.trackPanel.visibility = View.GONE
             binding.stagePanel.visibility = View.VISIBLE
+            binding.topBar.visibility = View.GONE
             binding.stageName.text = stageName ?: "SPECIAL STAGE"
             binding.stageLockNote.visibility = if (stopLock == true) View.VISIBLE else View.GONE
             applyStageFlagUi()
+            applyStageCompactUi()
         } else {
             binding.stagePanel.visibility = View.GONE
             binding.trackPanel.visibility = View.VISIBLE
+            binding.stageSpeed.visibility = View.VISIBLE
+            binding.crewStatusHint.visibility = View.VISIBLE
             updateRoadSectionUi()
             if (tracking) {
-                binding.statusText.setText(R.string.status_tracking)
-                binding.statusHint.setText(
-                    if (stopLock == true) R.string.status_hint_locked else R.string.status_hint_tracking
-                )
-                binding.statusText.setTextColor(ContextCompat.getColor(this, R.color.go))
                 binding.toggleBtn.visibility = View.GONE
             } else {
-                binding.statusText.setText(R.string.status_ready)
-                binding.statusHint.setText(R.string.status_hint_ready)
-                binding.statusText.setTextColor(ContextCompat.getColor(this, R.color.ink))
                 binding.toggleBtn.visibility = View.VISIBLE
                 binding.toggleBtn.setText(R.string.start_tracking)
                 binding.toggleBtn.backgroundTintList =
@@ -1078,6 +1224,107 @@ class MainActivity : AppCompatActivity() {
                 binding.toggleBtn.setTextColor(ContextCompat.getColor(this, R.color.black))
                 binding.stageLockNote.visibility = View.GONE
             }
+            applyRoadCompactUi()
+        }
+    }
+
+    /** Landscape road/track: plate + road + speed/GPS (+ gear) on one screen, no scroll. */
+    private fun applyRoadCompactUi() {
+        val cfg = resources.configuration
+        val landscape = cfg.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE
+        val shortLandscape = landscape && cfg.screenHeightDp > 0 && cfg.screenHeightDp <= 480
+
+        if (landscape) {
+            binding.topBar.visibility = View.GONE
+            binding.settingsBtnTrack.visibility = View.VISIBLE
+            binding.trackMainRow.orientation = android.widget.LinearLayout.HORIZONTAL
+            val roadLp = binding.roadSectionBox.layoutParams as android.widget.LinearLayout.LayoutParams
+            roadLp.width = 0
+            roadLp.height = android.widget.LinearLayout.LayoutParams.MATCH_PARENT
+            roadLp.weight = 1f
+            roadLp.marginEnd = (6 * resources.displayMetrics.density).toInt()
+            roadLp.topMargin = 0
+            binding.roadSectionBox.layoutParams = roadLp
+            val teleLp = binding.telemetryRow.layoutParams as android.widget.LinearLayout.LayoutParams
+            teleLp.width = 0
+            teleLp.height = android.widget.LinearLayout.LayoutParams.MATCH_PARENT
+            teleLp.weight = 1.15f
+            teleLp.topMargin = 0
+            teleLp.marginStart = (6 * resources.displayMetrics.density).toInt()
+            binding.telemetryRow.layoutParams = teleLp
+        } else {
+            binding.topBar.visibility = View.VISIBLE
+            binding.settingsBtnTrack.visibility = View.GONE
+            binding.trackMainRow.orientation = android.widget.LinearLayout.VERTICAL
+            val roadLp = binding.roadSectionBox.layoutParams as android.widget.LinearLayout.LayoutParams
+            roadLp.width = android.widget.LinearLayout.LayoutParams.MATCH_PARENT
+            roadLp.height = android.widget.LinearLayout.LayoutParams.WRAP_CONTENT
+            roadLp.weight = 0f
+            roadLp.marginEnd = 0
+            roadLp.topMargin = 0
+            binding.roadSectionBox.layoutParams = roadLp
+            val teleLp = binding.telemetryRow.layoutParams as android.widget.LinearLayout.LayoutParams
+            teleLp.width = android.widget.LinearLayout.LayoutParams.MATCH_PARENT
+            teleLp.height = android.widget.LinearLayout.LayoutParams.WRAP_CONTENT
+            teleLp.weight = 0f
+            teleLp.topMargin = resources.getDimensionPixelSize(R.dimen.track_gap)
+            teleLp.marginStart = 0
+            binding.telemetryRow.layoutParams = teleLp
+        }
+
+        // Match web short-landscape: hide secondary labels when height is tight.
+        val labelVisibility = if (shortLandscape) View.GONE else View.VISIBLE
+        binding.roadSectionLabel.visibility = labelVisibility
+        binding.speedLabel.visibility = labelVisibility
+        binding.accLabel.visibility = labelVisibility
+    }
+
+    /** Drop secondary stage chrome on short landscape so the confirm banner stays on-screen. */
+    private fun applyStageCompactUi() {
+        val cfg = resources.configuration
+        val shortLandscape = cfg.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE &&
+            cfg.screenHeightDp > 0 &&
+            cfg.screenHeightDp <= 480
+        binding.stageSpeed.visibility = if (shortLandscape) View.GONE else View.VISIBLE
+        binding.crewStatusHint.visibility = if (shortLandscape) View.GONE else View.VISIBLE
+        if (shortLandscape && stopLock == true) {
+            binding.stageLockNote.visibility = View.GONE
+        }
+        binding.contentScroll.post { fitStageMainRowHeight() }
+    }
+
+    /** Size the flag/OK/SOS row so stage chrome + confirm banner fit without scrolling. */
+    private fun fitStageMainRowHeight() {
+        if (binding.stagePanel.visibility != View.VISIBLE) return
+        val scrollH = binding.contentScroll.height -
+            binding.contentScroll.paddingTop -
+            binding.contentScroll.paddingBottom
+        if (scrollH <= 0) return
+        fun marginTopOf(view: View): Int =
+            (view.layoutParams as? android.view.ViewGroup.MarginLayoutParams)?.topMargin ?: 0
+        fun occupied(view: View): Int =
+            if (view.visibility == View.VISIBLE) view.height + marginTopOf(view) else 0
+
+        val density = resources.displayMetrics.density
+        // Reserve banner space even before confirm so showing it doesn't force a scroll.
+        val bannerSpace = if (binding.crewStatusBanner.visibility == View.VISIBLE) {
+            occupied(binding.crewStatusBanner).coerceAtLeast((48 * density).toInt())
+        } else {
+            (48 * density).toInt()
+        }
+        val used =
+            binding.tapeBar.height +
+                marginTopOf(binding.panelHost) +
+                bannerSpace +
+                occupied(binding.stageSpeed) +
+                occupied(binding.stageLockNote)
+        val minMain = (110 * density).toInt()
+        val maxMain = (280 * density).toInt()
+        val target = (scrollH - used).coerceIn(minMain, maxMain)
+        val lp = binding.stageMainRow.layoutParams
+        if (lp.height != target) {
+            lp.height = target
+            binding.stageMainRow.layoutParams = lp
         }
     }
 
@@ -1094,7 +1341,7 @@ class MainActivity : AppCompatActivity() {
     companion object {
         private const val STOPPED_SPEED_MPS = 1.2f // ~4.3 km/h
         private const val STOPPED_ALERT_MS = 20_000L
-        private const val CREW_HOLD_MS = 3_000L
+        private const val CREW_HOLD_MS = 2_000L
         private const val STATE_CREW_STATUS = "crewStatusSent"
         private const val STATE_IN_STAGE = "inStage"
         private const val STATE_STAGE_ID = "stageId"
