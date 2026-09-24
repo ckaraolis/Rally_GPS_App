@@ -63,6 +63,14 @@ object SessionStore {
             .apply()
     }
 
+    fun clearStopLockKnown(context: Context) {
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .edit()
+            .remove(KEY_STOP_LOCK_KNOWN)
+            .remove(KEY_STOP_LOCK)
+            .apply()
+    }
+
     fun stopLock(context: Context): Boolean? {
         val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
         if (!prefs.getBoolean(KEY_STOP_LOCK_KNOWN, false)) return null

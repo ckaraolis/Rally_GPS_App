@@ -126,7 +126,7 @@ document.getElementById("stageStopBtn")?.addEventListener("click", () => {
   requestStopTracking();
 });
 document.getElementById("driverHome")?.addEventListener("click", (event) => {
-  if (TEST_MODE || !tracking || stopLock === false) return;
+  if (TEST_MODE || !tracking || !stopLikelyLocked()) return;
   event.preventDefault();
   requestStopTracking();
 });
@@ -607,7 +607,7 @@ async function startTracking() {
   await requestTrackingNotification();
   refreshStopLock();
   syncLockChrome();
-  if (stopLock === true) armExitGuard();
+  if (stopLikelyLocked()) armExitGuard();
   flushQueue();
 }
 
@@ -623,7 +623,7 @@ function noteStopLock(value) {
   } catch {
     /* private mode */
   }
-  if (tracking && stopLock === true) armExitGuard();
+  if (tracking && stopLikelyLocked()) armExitGuard();
   syncLockChrome();
 }
 
@@ -632,21 +632,35 @@ async function refreshStopLock() {
   try {
     const res = await fetch("/api/stop-lock");
     const data = await res.json().catch(() => ({}));
-    if (res.ok && typeof data.stopLock === "boolean") noteStopLock(data.stopLock);
+    if (res.ok && typeof data.stopLock === "boolean") {
+      noteStopLock(data.stopLock);
+      return;
+    }
   } catch {
-    /* keep the last known lock */
+    /* fall through */
+  }
+  // Could not confirm unlock — treat as unknown so Stop still prompts.
+  if (stopLock === false) {
+    stopLock = null;
+    try {
+      sessionStorage.removeItem("rallyStopLock");
+    } catch {
+      /* private mode */
+    }
+    syncLockChrome();
   }
 }
 
 function syncLockChrome() {
   const trackingOn = Boolean(!TEST_MODE && tracking);
-  document.getElementById("driverHome")?.classList.toggle("hidden", trackingOn && stopLock !== false);
+  const locked = trackingOn && stopLikelyLocked();
+  document.getElementById("driverHome")?.classList.toggle("hidden", locked);
   const note = document.getElementById("lockNote");
   if (note) note.classList.toggle("hidden", !(trackingOn && stopLock === true) || safetyAlertOpen());
 }
 
 function armExitGuard() {
-  if (TEST_MODE || !tracking || stopLock !== true || exitGuardArmed) return;
+  if (TEST_MODE || !tracking || !stopLikelyLocked() || exitGuardArmed) return;
   try {
     history.pushState({ rallyStopLock: 1 }, "", location.href);
     exitGuardArmed = true;
@@ -687,8 +701,13 @@ function closeStopLockDialog() {
   if (input) input.value = "";
 }
 
+function stopLikelyLocked() {
+  // Fail closed: only skip the PIN UI when the server explicitly said unlocked.
+  return stopLock !== false;
+}
+
 async function serverStop(code) {
-  if (!session) return stopLock !== true;
+  if (!session) return !stopLikelyLocked();
   stopBusy = true;
   const confirmBtn = document.getElementById("stopLockConfirm");
   if (confirmBtn) confirmBtn.disabled = true;
@@ -703,6 +722,7 @@ async function serverStop(code) {
       }),
     });
     const data = await res.json().catch(() => ({}));
+    if (typeof data.stopLock === "boolean") noteStopLock(data.stopLock);
     if (res.status === 403 && data.needCode && !code) {
       noteStopLock(true);
       openStopLockDialog("");
@@ -714,19 +734,18 @@ async function serverStop(code) {
       return false;
     }
     if (!res.ok) {
-      if (stopLock === true) {
+      // Never stop without a successful /api/stop. Prompt for PIN when lock may apply.
+      if (stopLikelyLocked() || data.needCode || data.stopLock === true) {
         openStopLockDialog(data.error || "Could not check the code. Tracking stays on.");
-        return false;
       }
-      return true;
-    }
-    return true;
-  } catch {
-    if (stopLock === true) {
-      openStopLockDialog("No signal. Tracking stays on until the code can be checked.");
       return false;
     }
     return true;
+  } catch {
+    if (stopLikelyLocked()) {
+      openStopLockDialog("No signal. Tracking stays on until the code can be checked.");
+    }
+    return false;
   } finally {
     stopBusy = false;
     if (confirmBtn) confirmBtn.disabled = false;
@@ -737,7 +756,8 @@ async function requestStopTracking() {
   if (TEST_MODE || !tracking || stopBusy) return;
   if (safetyAlertOpen()) return;
   await refreshStopLock();
-  if (stopLock === true) {
+  // Prompt whenever lock is on or not yet known; unlock path still verifies with /api/stop.
+  if (stopLikelyLocked()) {
     openStopLockDialog("");
     return;
   }
@@ -1310,12 +1330,12 @@ if (TEST_MODE) {
   document.addEventListener("keydown", unlock, { once: true });
 } else {
   window.addEventListener("beforeunload", (event) => {
-    if (!tracking || stopLock !== true) return;
+    if (!tracking || !stopLikelyLocked()) return;
     event.preventDefault();
     event.returnValue = "";
   });
   window.addEventListener("popstate", () => {
-    if (!tracking || stopLock !== true) {
+    if (!tracking || !stopLikelyLocked()) {
       exitGuardArmed = false;
       return;
     }

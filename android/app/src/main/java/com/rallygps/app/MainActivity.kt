@@ -74,12 +74,13 @@ class MainActivity : AppCompatActivity() {
             val active = tracking || TrackingService.isActive
             if (active) {
                 if (shouldShowRedFlag() || crewAlertVisible) return
-                if (stopLock == true) {
-                    showStopCodeDialog(null)
-                    return
-                }
+                // Fail closed: only leave freely when the server said unlocked.
                 if (stopLock == false) {
                     leaveTrackingScreen()
+                    return
+                }
+                if (stopLock == true) {
+                    showStopCodeDialog(null)
                     return
                 }
                 probeStopLockThenLeave()
@@ -777,10 +778,16 @@ class MainActivity : AppCompatActivity() {
     private fun refreshStopLock() {
         val current = session ?: return
         io.execute {
-            val locked = runCatching { RallyApi(current.serverUrl).fetchStopLock() }.getOrNull() ?: return@execute
-            SessionStore.setStopLock(this, locked)
+            val locked = runCatching { RallyApi(current.serverUrl).fetchStopLock() }.getOrNull()
             runOnUiThread {
-                stopLock = locked
+                if (locked != null) {
+                    stopLock = locked
+                    SessionStore.setStopLock(this, locked)
+                } else if (stopLock == false) {
+                    // Stale unlock is unsafe if we cannot re-check.
+                    stopLock = null
+                    SessionStore.clearStopLockKnown(this)
+                }
                 if (tracking) renderMode()
             }
         }
@@ -794,7 +801,8 @@ class MainActivity : AppCompatActivity() {
             return
         }
         pendingAfterStop = after
-        if (stopLock == true) {
+        // Fail closed: prompt unless the server explicitly said unlocked.
+        if (stopLock != false) {
             showStopCodeDialog(null)
             return
         }
@@ -804,7 +812,7 @@ class MainActivity : AppCompatActivity() {
     private fun verifyStopCode(code: String?) {
         val current = session
         if (current == null) {
-            finishStop(code)
+            if (stopLock == false) finishStop(code) else showStopCodeDialog(null)
             return
         }
         io.execute {
@@ -823,11 +831,8 @@ class MainActivity : AppCompatActivity() {
             } catch (_: Exception) {
                 runOnUiThread {
                     stopDialog?.getButton(AlertDialog.BUTTON_POSITIVE)?.isEnabled = true
-                    if (stopLock == true) {
-                        showStopCodeDialog(getString(R.string.stop_code_offline))
-                    } else {
-                        finishStop(code)
-                    }
+                    // Fail closed — never stop when the server cannot verify the code.
+                    showStopCodeDialog(getString(R.string.stop_code_offline))
                 }
             }
         }
@@ -898,7 +903,7 @@ class MainActivity : AppCompatActivity() {
     private fun probeStopLockThenLeave() {
         val current = session
         if (current == null) {
-            leaveTrackingScreen()
+            showStopCodeDialog(null)
             return
         }
         io.execute {
@@ -908,7 +913,8 @@ class MainActivity : AppCompatActivity() {
                     stopLock = locked
                     SessionStore.setStopLock(this, locked)
                 }
-                if (stopLock == true) showStopCodeDialog(null) else leaveTrackingScreen()
+                // Fail closed when unknown or locked.
+                if (stopLock == false) leaveTrackingScreen() else showStopCodeDialog(null)
             }
         }
     }

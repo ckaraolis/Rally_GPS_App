@@ -78,7 +78,17 @@ class TrackingService : Service() {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         when (intent?.action) {
             ACTION_STOP -> {
-                stopTracking(intent.getStringExtra(EXTRA_STOP_CODE))
+                val code = intent.getStringExtra(EXTRA_STOP_CODE)
+                val lock = SessionStore.stopLock(this)
+                // Never locally stop a locked session without a code — bounce to the PIN UI.
+                if (lock != false && code.isNullOrBlank()) {
+                    val launch = Intent(this, MainActivity::class.java)
+                        .setAction(ACTION_REQUEST_STOP)
+                        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+                    startActivity(launch)
+                    return START_STICKY
+                }
+                stopTracking(code)
                 return START_NOT_STICKY
             }
             ACTION_CREW_STATUS -> {

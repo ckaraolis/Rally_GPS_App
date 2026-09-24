@@ -322,11 +322,45 @@ async function snapshotRally(rally) {
   return store.saveRally(rally);
 }
 
+/** In-process stop hashes when Supabase lacks columns or a cold instance has not loaded DB yet. */
+const stopLockByRally = new Map();
+/** Organiser cleared the PIN for this rally — do not auto-heal until they set a code or go LIVE. */
+const stopLockOptOut = new Set();
+
+function rememberStopLock(rally) {
+  if (!rally?.id || !rally.driverStopSalt || !rally.driverStopHash) return;
+  stopLockByRally.set(rally.id, { salt: rally.driverStopSalt, hash: rally.driverStopHash });
+  stopLockOptOut.delete(rally.id);
+}
+
+function mergeRememberedStopLock(rally) {
+  if (!rally?.id) return rally;
+  if (rally.driverStopSalt && rally.driverStopHash) {
+    rememberStopLock(rally);
+    return rally;
+  }
+  if (stopLockOptOut.has(rally.id)) {
+    rally.driverStopSalt = null;
+    rally.driverStopHash = null;
+    return rally;
+  }
+  const cached = stopLockByRally.get(rally.id);
+  if (cached?.salt && cached?.hash) {
+    rally.driverStopSalt = cached.salt;
+    rally.driverStopHash = cached.hash;
+  }
+  return rally;
+}
+
 function applyDefaultDriverStopCode(rally) {
-  if (!rally || rally.driverStopHash) return false;
+  if (!rally) return false;
+  mergeRememberedStopLock(rally);
+  if (rally.driverStopHash) return false;
+  if (stopLockOptOut.has(rally.id)) return false;
   const { salt, hash } = auth.hashPassword(auth.DEFAULT_DRIVER_STOP_CODE);
   rally.driverStopSalt = salt;
   rally.driverStopHash = hash;
+  rememberStopLock(rally);
   return true;
 }
 
@@ -335,10 +369,16 @@ async function seedDefaultDriverStopCodes() {
     const rallies = await store.listRallies();
     let applied = 0;
     for (const row of rallies) {
-      const full = (await store.getRally(row.id).catch(() => row)) || row;
+      const full = mergeRememberedStopLock((await store.getRally(row.id).catch(() => row)) || row);
+      if (stopLockOptOut.has(full.id)) continue;
       if (!applyDefaultDriverStopCode(full)) continue;
       full.updatedAt = new Date().toISOString();
-      await store.saveRally(full);
+      try {
+        await store.saveRally(full);
+      } catch (err) {
+        console.error("default driver stop save", full.id, err.message);
+      }
+      rememberStopLock(full);
       applied += 1;
     }
     if (applied) {
@@ -365,10 +405,14 @@ async function setRallyLive(rally) {
       await snapshotRally(full);
     }
   }
+  stopLockOptOut.delete(rally.id);
   applyDefaultDriverStopCode(rally);
   rally.status = "live";
   rally.updatedAt = new Date().toISOString();
-  return store.saveRally(rally);
+  const saved = await store.saveRally(rally);
+  rememberStopLock(saved || rally);
+  invalidateStopLockCache();
+  return saved;
 }
 
 function validCoord(lat, lon) {
@@ -466,6 +510,22 @@ function invalidateStopLockCache() {
   stopLockCache = { at: 0, required: false, salt: null, hash: null, rallyId: null };
 }
 
+async function healLiveStopLock(rally) {
+  if (!rally?.id || stopLockOptOut.has(rally.id)) return rally;
+  mergeRememberedStopLock(rally);
+  if (rally.driverStopSalt && rally.driverStopHash) return rally;
+  if (!applyDefaultDriverStopCode(rally)) return rally;
+  rally.updatedAt = new Date().toISOString();
+  try {
+    await store.saveRally(rally);
+  } catch (err) {
+    console.error("live stop lock heal", err.message);
+  }
+  rememberStopLock(rally);
+  invalidateStopLockCache();
+  return rally;
+}
+
 async function readLiveStopLock() {
   const now = Date.now();
   if (stopLockCache.at && now - stopLockCache.at < 2000) return stopLockCache;
@@ -474,13 +534,24 @@ async function readLiveStopLock() {
   let hash = null;
   let rallyId = null;
   try {
+    await ensureDefaultDriverStopCodes();
     const live = await store.getLiveRally();
     if (live?.id) {
       rallyId = live.id;
-      const full = (await store.getRally(live.id).catch(() => live)) || live;
+      let full = mergeRememberedStopLock((await store.getRally(live.id).catch(() => live)) || live);
+      full = await healLiveStopLock(full);
       salt = full.driverStopSalt || null;
       hash = full.driverStopHash || null;
       required = Boolean(salt && hash);
+      // Fail closed for LIVE rallies: if opt-out was not set and we still lack a hash,
+      // use an ephemeral default so stop cannot proceed without PIN verify.
+      if (!required && !stopLockOptOut.has(rallyId)) {
+        const ephemeral = auth.hashPassword(auth.DEFAULT_DRIVER_STOP_CODE);
+        salt = ephemeral.salt;
+        hash = ephemeral.hash;
+        required = true;
+        stopLockByRally.set(rallyId, { salt, hash });
+      }
     }
   } catch (err) {
     console.error("stop lock", err.message);
@@ -716,7 +787,10 @@ app.get(
   "/api/stop-lock",
   asyncHandler(async (_req, res) => {
     const lock = await readLiveStopLock();
-    res.json({ stopLock: lock.required });
+    res.json({
+      stopLock: lock.required,
+      liveRallyId: lock.rallyId || null,
+    });
   })
 );
 
@@ -797,9 +871,12 @@ app.get(
   asyncHandler(async (_req, res) => {
     await ensureDefaultDriverStopCodes();
     const rallies = await store.listRallies();
+    const withLocks = rallies.map((row) => mergeRememberedStopLock({ ...row }));
+    const live = withLocks.find((r) => r.status === "live") || null;
+    if (live) await healLiveStopLock(live);
     res.json({
-      liveRally: rallySummary(rallies.find((r) => r.status === "live") || null),
-      rallies: rallies.map(rallySummary),
+      liveRally: rallySummary(live),
+      rallies: withLocks.map(rallySummary),
     });
   })
 );
@@ -825,7 +902,9 @@ app.post(
       await setRallyLive(rally);
     } else {
       await store.saveRally(rally);
+      rememberStopLock(rally);
     }
+    invalidateStopLockCache();
     res.json({ rally: rallySummary(rally) });
   })
 );
@@ -860,8 +939,9 @@ app.patch(
     } else {
       rally.status = nextStatus;
       await store.saveRally(rally);
+      rememberStopLock(rally);
     }
-    const saved = await store.getRally(rally.id);
+    const saved = mergeRememberedStopLock((await store.getRally(rally.id).catch(() => rally)) || rally);
     res.json({ rally: rallySummary(saved || rally) });
   })
 );
@@ -874,6 +954,8 @@ app.post(
     if (req.body.clear === true) {
       rally.driverStopSalt = null;
       rally.driverStopHash = null;
+      stopLockByRally.delete(rally.id);
+      stopLockOptOut.add(rally.id);
     } else {
       const code = normalizeDriverStopCode(req.body.code);
       if (!code) {
@@ -882,11 +964,18 @@ app.post(
       const { salt, hash } = auth.hashPassword(code);
       rally.driverStopSalt = salt;
       rally.driverStopHash = hash;
+      stopLockOptOut.delete(rally.id);
+      rememberStopLock(rally);
     }
     rally.updatedAt = new Date().toISOString();
     await store.saveRally(rally);
+    if (req.body.clear !== true) rememberStopLock(rally);
     invalidateStopLockCache();
-    const saved = (await store.getRally(rally.id)) || rally;
+    const saved = mergeRememberedStopLock((await store.getRally(rally.id).catch(() => rally)) || rally);
+    if (req.body.clear === true) {
+      saved.driverStopSalt = null;
+      saved.driverStopHash = null;
+    }
     res.json({
       ok: true,
       driverStopLock: Boolean(saved.driverStopHash),
