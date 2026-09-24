@@ -33,6 +33,16 @@ function isRallyTestPage() {
 const TEST_MODE = isRallyTestPage();
 
 let session = null;
+let stopLock = null;
+let stopBusy = false;
+let exitGuardArmed = false;
+try {
+  const savedLock = sessionStorage.getItem("rallyStopLock");
+  if (savedLock === "1") stopLock = true;
+  else if (savedLock === "0") stopLock = false;
+} catch {
+  /* private mode */
+}
 let watchId = null;
 let wakeLock = null;
 let tracking = false;
@@ -99,6 +109,7 @@ joinForm?.addEventListener("submit", async (event) => {
     if (!res.ok) throw new Error(data.error || "Could not join");
     session = data;
     localStorage.setItem(KEY, JSON.stringify(session));
+    if (typeof data.stopLock === "boolean") noteStopLock(data.stopLock);
     showTrack();
   } catch (err) {
     showError(err.message);
@@ -107,12 +118,24 @@ joinForm?.addEventListener("submit", async (event) => {
 
 toggleBtn?.addEventListener("click", () => {
   if (TEST_MODE) return;
-  if (tracking) stopTracking();
+  if (tracking) requestStopTracking();
   else startTracking();
 });
 document.getElementById("stageStopBtn")?.addEventListener("click", () => {
   if (TEST_MODE) return;
-  stopTracking();
+  requestStopTracking();
+});
+document.getElementById("driverHome")?.addEventListener("click", (event) => {
+  if (TEST_MODE || !tracking || stopLock === false) return;
+  event.preventDefault();
+  requestStopTracking();
+});
+document.getElementById("stopLockForm")?.addEventListener("submit", (event) => {
+  event.preventDefault();
+  confirmStopCode();
+});
+document.getElementById("stopLockCancel")?.addEventListener("click", () => {
+  closeStopLockDialog();
 });
 
 async function sendCrew(status) {
@@ -503,6 +526,7 @@ function shouldShowRedFlag() {
 }
 
 function showRedFlagAlert() {
+  closeStopLockDialog();
   cancelAnyHold();
   redFlagAlert.classList.remove("hidden");
   crewAlert.classList.add("hidden");
@@ -520,6 +544,7 @@ function hideRedFlagAlert() {
 
 function showCrewAlert() {
   if (shouldShowRedFlag()) return;
+  closeStopLockDialog();
   cancelAnyHold();
   crewAlert.classList.remove("hidden");
   trackPanel.classList.add("hidden");
@@ -567,6 +592,7 @@ async function startTracking() {
   errorRead.classList.add("hidden");
   tracking = true;
   bgFixesWhileHidden = 0;
+  syncLockChrome();
   setTrackingWanted(true);
   toggleBtn.textContent = "Stop tracking";
   toggleBtn.className = "btn btn-stop";
@@ -579,10 +605,171 @@ async function startTracking() {
   await unlockFlagSound();
   bindFlagSoundRetry();
   await requestTrackingNotification();
+  refreshStopLock();
+  syncLockChrome();
+  if (stopLock === true) armExitGuard();
   flushQueue();
 }
 
-async function stopTracking() {
+function safetyAlertOpen() {
+  return shouldShowRedFlag() || (crewAlert && !crewAlert.classList.contains("hidden"));
+}
+
+function noteStopLock(value) {
+  if (value !== true && value !== false) return;
+  stopLock = value;
+  try {
+    sessionStorage.setItem("rallyStopLock", value ? "1" : "0");
+  } catch {
+    /* private mode */
+  }
+  if (tracking && stopLock === true) armExitGuard();
+  syncLockChrome();
+}
+
+async function refreshStopLock() {
+  if (TEST_MODE) return;
+  try {
+    const res = await fetch("/api/stop-lock");
+    const data = await res.json().catch(() => ({}));
+    if (res.ok && typeof data.stopLock === "boolean") noteStopLock(data.stopLock);
+  } catch {
+    /* keep the last known lock */
+  }
+}
+
+function syncLockChrome() {
+  const trackingOn = Boolean(!TEST_MODE && tracking);
+  document.getElementById("driverHome")?.classList.toggle("hidden", trackingOn && stopLock !== false);
+  const note = document.getElementById("lockNote");
+  if (note) note.classList.toggle("hidden", !(trackingOn && stopLock === true) || safetyAlertOpen());
+}
+
+function armExitGuard() {
+  if (TEST_MODE || !tracking || stopLock !== true || exitGuardArmed) return;
+  try {
+    history.pushState({ rallyStopLock: 1 }, "", location.href);
+    exitGuardArmed = true;
+  } catch {
+    /* ignore */
+  }
+}
+
+function openStopLockDialog(message) {
+  if (TEST_MODE || safetyAlertOpen()) return;
+  const modal = document.getElementById("stopLockModal");
+  if (!modal) return;
+  const err = document.getElementById("stopLockError");
+  if (err) {
+    if (message) {
+      err.textContent = message;
+      err.classList.remove("hidden");
+    } else {
+      err.textContent = "";
+      err.classList.add("hidden");
+    }
+  }
+  modal.classList.remove("hidden");
+  modal.hidden = false;
+  const input = document.getElementById("stopLockCode");
+  if (input) {
+    input.value = "";
+    input.focus();
+  }
+}
+
+function closeStopLockDialog() {
+  const modal = document.getElementById("stopLockModal");
+  if (!modal) return;
+  modal.classList.add("hidden");
+  modal.hidden = true;
+  const input = document.getElementById("stopLockCode");
+  if (input) input.value = "";
+}
+
+async function serverStop(code) {
+  if (!session) return stopLock !== true;
+  stopBusy = true;
+  const confirmBtn = document.getElementById("stopLockConfirm");
+  if (confirmBtn) confirmBtn.disabled = true;
+  try {
+    const res = await fetch("/api/stop", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        id: session.id,
+        token: session.token,
+        ...(code ? { code } : {}),
+      }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (res.status === 403 && data.needCode && !code) {
+      noteStopLock(true);
+      openStopLockDialog("");
+      return false;
+    }
+    if (res.status === 403 || res.status === 429) {
+      noteStopLock(true);
+      openStopLockDialog(data.error || "Wrong code.");
+      return false;
+    }
+    if (!res.ok) {
+      if (stopLock === true) {
+        openStopLockDialog(data.error || "Could not check the code. Tracking stays on.");
+        return false;
+      }
+      return true;
+    }
+    return true;
+  } catch {
+    if (stopLock === true) {
+      openStopLockDialog("No signal. Tracking stays on until the code can be checked.");
+      return false;
+    }
+    return true;
+  } finally {
+    stopBusy = false;
+    if (confirmBtn) confirmBtn.disabled = false;
+  }
+}
+
+async function requestStopTracking() {
+  if (TEST_MODE || !tracking || stopBusy) return;
+  if (safetyAlertOpen()) return;
+  await refreshStopLock();
+  if (stopLock === true) {
+    openStopLockDialog("");
+    return;
+  }
+  const allowed = await serverStop(null);
+  if (allowed) await applyLocalStop();
+}
+
+async function confirmStopCode() {
+  if (TEST_MODE || stopBusy) return;
+  const input = document.getElementById("stopLockCode");
+  const code = String(input?.value || "").trim();
+  const err = document.getElementById("stopLockError");
+  if (!/^\d{4,6}$/.test(code)) {
+    if (err) {
+      err.textContent = "Enter the 4–6 digit organiser code.";
+      err.classList.remove("hidden");
+    }
+    return;
+  }
+  const allowed = await serverStop(code);
+  if (!allowed) {
+    if (input) {
+      input.value = "";
+      input.focus();
+    }
+    return;
+  }
+  closeStopLockDialog();
+  await applyLocalStop();
+}
+
+async function applyLocalStop() {
   if (TEST_MODE) return;
   tracking = false;
   inStage = false;
@@ -603,19 +790,15 @@ async function stopTracking() {
   toggleBtn.textContent = "Start tracking";
   toggleBtn.className = "btn btn-start";
   setLamp("lamp-idle", "STOPPED", "Tracking is off. Tap start when you are ready.");
+  exitGuardArmed = false;
+  closeStopLockDialog();
+  syncLockChrome();
   updateBgNote();
   renderMode();
-  if (session) {
-    try {
-      await fetch("/api/stop", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id: session.id, token: session.token }),
-      });
-    } catch {
-      /* ignore */
-    }
-  }
+}
+
+async function stopTracking() {
+  await applyLocalStop();
 }
 
 function requestFreshFix() {
@@ -648,6 +831,7 @@ async function pollReconnect() {
       return;
     }
     nudged = Boolean(data.reconnectRequested);
+    if (typeof data.stopLock === "boolean") noteStopLock(data.stopLock);
     if (data.section !== undefined || data.flagStatus || data.crewStatus !== undefined) {
       applySectionAndFlag(data);
       applyCrewStatusFromServer(data);
@@ -735,6 +919,7 @@ async function onFix(pos) {
 }
 
 function applyPingResult(data, speed) {
+  if (typeof data.stopLock === "boolean") noteStopLock(data.stopLock);
   lastPingOkAt = Date.now();
   setLiveLamp();
   applySectionAndFlag(data);
@@ -985,6 +1170,7 @@ function bgNoteText() {
 }
 
 function updateBgNote() {
+  syncLockChrome();
   const el = document.getElementById("bgTrackNote");
   if (!el) return;
   const alertsUp =
@@ -1090,6 +1276,7 @@ async function pollStageFlag() {
     });
     const data = await res.json().catch(() => ({}));
     if (!res.ok) return;
+    if (typeof data.stopLock === "boolean") noteStopLock(data.stopLock);
     applyFlagFromServer(data);
     renderMode();
   } catch {
@@ -1122,6 +1309,20 @@ if (TEST_MODE) {
   document.addEventListener("pointerdown", unlock, { once: true });
   document.addEventListener("keydown", unlock, { once: true });
 } else {
+  window.addEventListener("beforeunload", (event) => {
+    if (!tracking || stopLock !== true) return;
+    event.preventDefault();
+    event.returnValue = "";
+  });
+  window.addEventListener("popstate", () => {
+    if (!tracking || stopLock !== true) {
+      exitGuardArmed = false;
+      return;
+    }
+    exitGuardArmed = false;
+    armExitGuard();
+    if (!safetyAlertOpen()) openStopLockDialog("");
+  });
   document.addEventListener("visibilitychange", async () => {
     if (!tracking && trackingWanted() && session) {
       await startTracking();

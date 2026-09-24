@@ -78,7 +78,7 @@ class TrackingService : Service() {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         when (intent?.action) {
             ACTION_STOP -> {
-                stopTracking()
+                stopTracking(intent.getStringExtra(EXTRA_STOP_CODE))
                 return START_NOT_STICKY
             }
             ACTION_CREW_STATUS -> {
@@ -172,7 +172,7 @@ class TrackingService : Service() {
         }
     }
 
-    private fun stopTracking() {
+    private fun stopTracking(code: String? = null) {
         running = false
         isActive = false
         SessionStore.setTrackingWanted(this, false)
@@ -185,7 +185,7 @@ class TrackingService : Service() {
         if (current != null && client != null) {
             executor.execute {
                 flushQueue()
-                runCatching { client.stop(current.id, current.token) }
+                runCatching { client.stop(current.id, current.token, code) }
             }
         }
         broadcast(tracking = false)
@@ -220,7 +220,8 @@ class TrackingService : Service() {
                         sectionId = poll.sectionId,
                         flagStatus = poll.flagStatus,
                         flagTs = poll.flagTs,
-                        flagAcked = poll.flagAcked
+                        flagAcked = poll.flagAcked,
+                        stopLock = poll.stopLock
                     )
                 }
                 sendFreshFix()
@@ -283,7 +284,8 @@ class TrackingService : Service() {
                         sectionId = ping.sectionId,
                         flagStatus = ping.flagStatus,
                         flagTs = ping.flagTs,
-                        flagAcked = ping.flagAcked
+                        flagAcked = ping.flagAcked,
+                        stopLock = ping.stopLock
                     )
                 } catch (error: Exception) {
                     if (error.message?.contains("Unknown car", ignoreCase = true) == true) {
@@ -352,7 +354,8 @@ class TrackingService : Service() {
         sectionId: String? = null,
         flagStatus: String? = null,
         flagTs: Long? = null,
-        flagAcked: Boolean? = null
+        flagAcked: Boolean? = null,
+        stopLock: Boolean? = null
     ) {
         val intent = Intent(TrackingActions.STATUS).apply {
             setPackage(packageName)
@@ -374,6 +377,7 @@ class TrackingService : Service() {
             if (flagStatus != null) putExtra(TrackingActions.EXTRA_FLAG_STATUS, flagStatus)
             if (flagTs != null) putExtra(TrackingActions.EXTRA_FLAG_TS, flagTs)
             if (flagAcked != null) putExtra(TrackingActions.EXTRA_FLAG_ACKED, flagAcked)
+            if (stopLock != null) putExtra(TrackingActions.EXTRA_STOP_LOCK, stopLock)
         }
         sendBroadcast(intent)
     }
@@ -399,10 +403,12 @@ class TrackingService : Service() {
             Intent(this, MainActivity::class.java),
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
-        val stopIntent = PendingIntent.getService(
+        val stopIntent = PendingIntent.getActivity(
             this,
-            1,
-            Intent(this, TrackingService::class.java).setAction(ACTION_STOP),
+            2,
+            Intent(this, MainActivity::class.java)
+                .setAction(ACTION_REQUEST_STOP)
+                .addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP),
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
         return NotificationCompat.Builder(this, CHANNEL_ID)
@@ -418,6 +424,8 @@ class TrackingService : Service() {
 
     companion object {
         const val ACTION_STOP = "com.rallygps.app.STOP"
+        const val ACTION_REQUEST_STOP = "com.rallygps.app.REQUEST_STOP"
+        const val EXTRA_STOP_CODE = "stopCode"
         const val ACTION_CREW_STATUS = "com.rallygps.app.CREW_STATUS"
         const val ACTION_FLAG_ACK = "com.rallygps.app.FLAG_ACK"
         const val EXTRA_CREW_STATUS = "crewStatus"

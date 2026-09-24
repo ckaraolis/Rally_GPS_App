@@ -7,6 +7,8 @@ object SessionStore {
     private const val PREFS = "rally_gps"
     private const val KEY = "session"
     private const val KEY_TRACKING = "trackingWanted"
+    private const val KEY_STOP_LOCK_KNOWN = "stopLockKnown"
+    private const val KEY_STOP_LOCK = "stopLock"
 
     fun save(context: Context, session: Session) {
         val json = JSONObject()
@@ -53,11 +55,27 @@ object SessionStore {
             .getBoolean(KEY_TRACKING, false)
     }
 
+    fun setStopLock(context: Context, locked: Boolean) {
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .edit()
+            .putBoolean(KEY_STOP_LOCK_KNOWN, true)
+            .putBoolean(KEY_STOP_LOCK, locked)
+            .apply()
+    }
+
+    fun stopLock(context: Context): Boolean? {
+        val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        if (!prefs.getBoolean(KEY_STOP_LOCK_KNOWN, false)) return null
+        return prefs.getBoolean(KEY_STOP_LOCK, false)
+    }
+
     fun clear(context: Context) {
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
             .edit()
             .remove(KEY)
             .putBoolean(KEY_TRACKING, false)
+            .remove(KEY_STOP_LOCK_KNOWN)
+            .remove(KEY_STOP_LOCK)
             .apply()
     }
 

@@ -112,6 +112,7 @@ function updateRouteTarget() {
     pinIcons = {};
     pinIconsRallyId = null;
     renderPinIconSlots();
+    updateStopCodePanel();
     return;
   }
   if (routeFile) routeFile.disabled = false;
@@ -121,6 +122,7 @@ function updateRouteTarget() {
     routeTarget.textContent = `KMZ for ${rally.name} (${String(rally.status || "draft").toUpperCase()}). Other rallies keep their own routes.`;
   }
   renderPinIconSlots();
+  updateStopCodePanel();
 }
 
 copyBtn.addEventListener("click", async () => {
@@ -227,7 +229,9 @@ rallyForm.addEventListener("submit", async (event) => {
     if (!res.ok) throw new Error(data.error || "Could not create rally");
     persistSelectedRally(data.rally?.id || null);
     rallyForm.reset();
-    rallyStatus.textContent = startLive ? "Rally is LIVE. Cars will show on the map." : "Rally saved. Upload the KMZ for this event.";
+    rallyStatus.textContent = startLive
+      ? "Rally is LIVE. Cars will show on the map. Default stop lock is on (STOP LOCK)."
+      : "Rally saved with default stop lock (STOP LOCK). Upload the KMZ for this event, or change the driver stop code below.";
     viewingRallyId = null;
     historyCars = [];
     await refreshRallies();
@@ -235,6 +239,85 @@ rallyForm.addEventListener("submit", async (event) => {
     await refreshSections();
   } catch (err) {
     rallyStatus.textContent = err.message || "Could not create rally";
+  }
+});
+
+function updateStopCodePanel() {
+  const status = document.getElementById("stopCodeStatus");
+  const input = document.getElementById("stopCodeInput");
+  const form = document.getElementById("stopCodeForm");
+  const clearBtn = document.getElementById("clearStopCode");
+  const saveBtn = form?.querySelector("button[type='submit']");
+  const rally = routeRally();
+  if (!status) return;
+  if (!rally) {
+    status.textContent = "Create a rally — a default stop lock is applied automatically. Change the PIN here anytime.";
+    if (input) input.disabled = true;
+    if (saveBtn) saveBtn.disabled = true;
+    if (clearBtn) clearBtn.disabled = true;
+    return;
+  }
+  if (input) input.disabled = false;
+  if (saveBtn) saveBtn.disabled = false;
+  if (clearBtn) clearBtn.disabled = !rally.driverStopLock;
+  if (rally.driverStopLock && rally.status === "live") {
+    status.textContent = `STOP LOCK on ${rally.name}. Driver phones must enter the organiser PIN to stop tracking while this rally is LIVE.`;
+  } else if (rally.driverStopLock) {
+    status.textContent = `STOP LOCK saved for ${rally.name}. It locks driver phones when this rally is LIVE. Change or clear the PIN below.`;
+  } else {
+    status.textContent = `No stop code on ${rally.name}. Drivers can stop freely. Set a 4–6 digit PIN, or go LIVE to re-apply the default lock.`;
+  }
+}
+
+document.getElementById("stopCodeForm")?.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const status = document.getElementById("stopCodeStatus");
+  const input = document.getElementById("stopCodeInput");
+  const rally = routeRally();
+  const code = String(input?.value || "").trim();
+  if (!rally) {
+    if (status) status.textContent = "Create a rally first.";
+    return;
+  }
+  if (!/^\d{4,6}$/.test(code)) {
+    if (status) status.textContent = "Use a 4–6 digit code. This is not the race control password.";
+    return;
+  }
+  if (status) status.textContent = "Saving stop code…";
+  try {
+    const res = await fetch(`/api/rallies/${encodeURIComponent(rally.id)}/driver-stop-code`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ code }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || "Could not save the stop code");
+    if (input) input.value = "";
+    await refreshRallies();
+  } catch (err) {
+    if (status) status.textContent = err.message;
+  }
+});
+
+document.getElementById("clearStopCode")?.addEventListener("click", async () => {
+  const status = document.getElementById("stopCodeStatus");
+  const rally = routeRally();
+  if (!rally?.driverStopLock) return;
+  if (!confirm(`Clear the stop code for ${rally.name}? Drivers will be able to stop tracking without a code.`)) return;
+  if (status) status.textContent = "Clearing stop code…";
+  try {
+    const res = await fetch(`/api/rallies/${encodeURIComponent(rally.id)}/driver-stop-code`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ clear: true }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || "Could not clear the stop code");
+    const input = document.getElementById("stopCodeInput");
+    if (input) input.value = "";
+    await refreshRallies();
+  } catch (err) {
+    if (status) status.textContent = err.message;
   }
 });
 
@@ -305,6 +388,7 @@ function renderRallyList(rallies, live) {
       const badge = viewing && rally.status !== "live" ? "history" : rally.status;
       const badgeLabel = viewing && rally.status !== "live" ? "VIEWING" : rally.status.toUpperCase();
       const kmzBadge = selected ? ` <span class="rally-badge route">KMZ</span>` : "";
+      const lockBadge = rally.driverStopLock ? ` <span class="rally-badge lock">STOP LOCK</span>` : "";
       const actions =
         rally.status === "live"
           ? `<button type="button" class="mini-toggle" data-rally-status="ended" data-id="${rally.id}">End live</button>`
@@ -325,7 +409,7 @@ function renderRallyList(rallies, live) {
       return `<li class="car-row${selected ? " selected-rally" : ""}" data-rally="${rally.id}">
         <span class="dot" style="background:${rally.status === "live" ? "#22c55e" : rally.status === "ended" ? "#3d7dff" : "#9a917f"}"></span>
         <div>
-          <strong>${escapeHtml(rally.name)} <span class="rally-badge ${badge}">${badgeLabel}</span>${kmzBadge}</strong>
+          <strong>${escapeHtml(rally.name)} <span class="rally-badge ${badge}">${badgeLabel}</span>${kmzBadge}${lockBadge}</strong>
           <small>${escapeHtml(rallyDates(rally))}${rally.carCount ? ` · ${rally.carCount} cars saved` : ""}</small>
           <div class="car-actions">${actions}${backLive}</div>
         </div>
@@ -381,6 +465,7 @@ function renderRallyList(rallies, live) {
       }
     });
   }
+
   for (const btn of list.querySelectorAll("button[data-rally-view]")) {
     btn.addEventListener("click", async (event) => {
       event.stopPropagation();

@@ -79,7 +79,10 @@ async function saveControlUser(user) {
 
 async function ensureControlUser() {
   const existing = await loadControlUser(auth.DEFAULT_USERNAME);
-  if (existing) return existing;
+  if (existing) {
+    ensureDefaultDriverStopCodes().catch(() => {});
+    return existing;
+  }
   const { salt, hash } = auth.hashPassword(auth.DEFAULT_PASSWORD);
   const user = {
     username: auth.DEFAULT_USERNAME,
@@ -88,6 +91,7 @@ async function ensureControlUser() {
     mustChangePassword: true,
   };
   await saveControlUser(user);
+  ensureDefaultDriverStopCodes().catch(() => {});
   return user;
 }
 
@@ -318,6 +322,41 @@ async function snapshotRally(rally) {
   return store.saveRally(rally);
 }
 
+function applyDefaultDriverStopCode(rally) {
+  if (!rally || rally.driverStopHash) return false;
+  const { salt, hash } = auth.hashPassword(auth.DEFAULT_DRIVER_STOP_CODE);
+  rally.driverStopSalt = salt;
+  rally.driverStopHash = hash;
+  return true;
+}
+
+async function seedDefaultDriverStopCodes() {
+  try {
+    const rallies = await store.listRallies();
+    let applied = 0;
+    for (const row of rallies) {
+      const full = (await store.getRally(row.id).catch(() => row)) || row;
+      if (!applyDefaultDriverStopCode(full)) continue;
+      full.updatedAt = new Date().toISOString();
+      await store.saveRally(full);
+      applied += 1;
+    }
+    if (applied) {
+      invalidateStopLockCache();
+      console.log(`  Driver stop: default PIN hashed onto ${applied} rally(ies) without a stop code`);
+    }
+  } catch (err) {
+    console.error("default driver stop seed", err.message);
+  }
+}
+
+let defaultStopSeedPromise = null;
+
+function ensureDefaultDriverStopCodes() {
+  if (!defaultStopSeedPromise) defaultStopSeedPromise = seedDefaultDriverStopCodes();
+  return defaultStopSeedPromise;
+}
+
 async function setRallyLive(rally) {
   const rallies = await store.listRallies();
   for (const other of rallies) {
@@ -326,6 +365,7 @@ async function setRallyLive(rally) {
       await snapshotRally(full);
     }
   }
+  applyDefaultDriverStopCode(rally);
   rally.status = "live";
   rally.updatedAt = new Date().toISOString();
   return store.saveRally(rally);
@@ -405,7 +445,7 @@ function applyFix(car, point, sections, { detect = true } = {}) {
   }
 }
 
-function pingPayload(car, sections) {
+function pingPayload(car, sections, stopLock = false) {
   const { flagStatus, flagTs, live } = flagForCar(car, sections);
   return {
     ok: true,
@@ -415,7 +455,69 @@ function pingPayload(car, sections) {
     flagStatus,
     flagTs,
     flagAcked: hasAckedFlag(car, live),
+    stopLock: Boolean(stopLock),
   };
+}
+
+let stopLockCache = { at: 0, required: false, salt: null, hash: null, rallyId: null };
+const stopCodeAttempts = new Map();
+
+function invalidateStopLockCache() {
+  stopLockCache = { at: 0, required: false, salt: null, hash: null, rallyId: null };
+}
+
+async function readLiveStopLock() {
+  const now = Date.now();
+  if (stopLockCache.at && now - stopLockCache.at < 2000) return stopLockCache;
+  let required = false;
+  let salt = null;
+  let hash = null;
+  let rallyId = null;
+  try {
+    const live = await store.getLiveRally();
+    if (live?.id) {
+      rallyId = live.id;
+      const full = (await store.getRally(live.id).catch(() => live)) || live;
+      salt = full.driverStopSalt || null;
+      hash = full.driverStopHash || null;
+      required = Boolean(salt && hash);
+    }
+  } catch (err) {
+    console.error("stop lock", err.message);
+  }
+  stopLockCache = { at: now, required, salt, hash, rallyId };
+  return stopLockCache;
+}
+
+function normalizeDriverStopCode(raw) {
+  const text = String(raw ?? "").trim();
+  if (!/^\d{4,6}$/.test(text)) return null;
+  return text;
+}
+
+function stopCodeWaitSeconds(carId) {
+  const row = stopCodeAttempts.get(carId);
+  if (!row?.lockedUntil || row.lockedUntil <= Date.now()) return 0;
+  return Math.max(1, Math.ceil((row.lockedUntil - Date.now()) / 1000));
+}
+
+function noteStopCodeFailure(carId) {
+  const row = stopCodeAttempts.get(carId) || { fails: 0, lockedUntil: 0 };
+  row.fails += 1;
+  if (row.fails >= 5) {
+    row.lockedUntil = Date.now() + 20_000;
+    row.fails = 0;
+  }
+  stopCodeAttempts.set(carId, row);
+}
+
+function noteStopCodeSuccess(carId) {
+  stopCodeAttempts.delete(carId);
+}
+
+function rallyForClient(rally) {
+  if (!rally) return null;
+  return { ...rallySummary(rally), snapshot: rally.snapshot ?? null };
 }
 
 function asyncHandler(fn) {
@@ -477,6 +579,7 @@ app.post(
       return res.status(400).json({ error: "Car number and driver name are required." });
     }
 
+    const stopLock = (await readLiveStopLock()).required;
     const existing = await store.findByCarNumber(carNumber);
     if (existing) {
       existing.driverName = driverName;
@@ -489,6 +592,7 @@ app.post(
         color: existing.color,
         carNumber: existing.carNumber,
         driverName: existing.driverName,
+        stopLock,
       });
     }
 
@@ -510,6 +614,7 @@ app.post(
       color: car.color,
       carNumber: car.carNumber,
       driverName: car.driverName,
+      stopLock,
     });
   })
 );
@@ -530,7 +635,8 @@ app.post(
     applyFix(car, point, sections, { detect: true });
     car.reconnectRequested = null;
     await store.saveCar(car);
-    res.json(pingPayload(car, sections));
+    const stopLock = (await readLiveStopLock()).required;
+    res.json(pingPayload(car, sections, stopLock));
   })
 );
 
@@ -560,7 +666,8 @@ app.post(
     }
     car.reconnectRequested = null;
     await store.saveCar(car);
-    res.json({ ...pingPayload(car, sections), accepted: points.length });
+    const stopLock = (await readLiveStopLock()).required;
+    res.json({ ...pingPayload(car, sections, stopLock), accepted: points.length });
   })
 );
 
@@ -605,12 +712,44 @@ app.post(
   })
 );
 
+app.get(
+  "/api/stop-lock",
+  asyncHandler(async (_req, res) => {
+    const lock = await readLiveStopLock();
+    res.json({ stopLock: lock.required });
+  })
+);
+
 app.post(
   "/api/stop",
   asyncHandler(async (req, res) => {
     const car = await store.getCar(req.body.id);
     if (!car || car.token !== req.body.token) {
       return res.status(401).json({ error: "Unknown car session." });
+    }
+    const lock = await readLiveStopLock();
+    if (lock.required) {
+      const wait = stopCodeWaitSeconds(car.id);
+      if (wait) {
+        return res.status(429).json({
+          error: "Too many attempts. Wait a moment.",
+          stopLock: true,
+          retryAfter: wait,
+        });
+      }
+      const code = normalizeDriverStopCode(req.body.code);
+      if (!code) {
+        return res.status(403).json({
+          error: "Stop code required.",
+          stopLock: true,
+          needCode: true,
+        });
+      }
+      if (!auth.verifyPassword(code, lock.salt, lock.hash)) {
+        noteStopCodeFailure(car.id);
+        return res.status(403).json({ error: "Wrong stop code.", stopLock: true });
+      }
+      noteStopCodeSuccess(car.id);
     }
     car.tracking = false;
     await store.saveCar(car);
@@ -656,6 +795,7 @@ app.delete(
 app.get(
   "/api/rallies",
   asyncHandler(async (_req, res) => {
+    await ensureDefaultDriverStopCodes();
     const rallies = await store.listRallies();
     res.json({
       liveRally: rallySummary(rallies.find((r) => r.status === "live") || null),
@@ -680,6 +820,7 @@ app.post(
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     };
+    applyDefaultDriverStopCode(rally);
     if (parseRallyStatus(req.body.status, "draft") === "live") {
       await setRallyLive(rally);
     } else {
@@ -694,7 +835,7 @@ app.get(
   asyncHandler(async (req, res) => {
     const rally = await store.getRally(req.params.id);
     if (!rally) return res.status(404).json({ error: "Rally not found." });
-    res.json({ rally });
+    res.json({ rally: rallyForClient(rally) });
   })
 );
 
@@ -722,6 +863,35 @@ app.patch(
     }
     const saved = await store.getRally(rally.id);
     res.json({ rally: rallySummary(saved || rally) });
+  })
+);
+
+app.post(
+  "/api/rallies/:id/driver-stop-code",
+  asyncHandler(async (req, res) => {
+    const rally = await store.getRally(req.params.id);
+    if (!rally) return res.status(404).json({ error: "Rally not found." });
+    if (req.body.clear === true) {
+      rally.driverStopSalt = null;
+      rally.driverStopHash = null;
+    } else {
+      const code = normalizeDriverStopCode(req.body.code);
+      if (!code) {
+        return res.status(400).json({ error: "Use a 4–6 digit code." });
+      }
+      const { salt, hash } = auth.hashPassword(code);
+      rally.driverStopSalt = salt;
+      rally.driverStopHash = hash;
+    }
+    rally.updatedAt = new Date().toISOString();
+    await store.saveRally(rally);
+    invalidateStopLockCache();
+    const saved = (await store.getRally(rally.id)) || rally;
+    res.json({
+      ok: true,
+      driverStopLock: Boolean(saved.driverStopHash),
+      rally: rallySummary(saved),
+    });
   })
 );
 
@@ -824,6 +994,7 @@ app.post(
     }
     const { sections } = await liveSections();
     const { flagStatus, flagTs, live } = flagForCar(car, sections);
+    const stopLock = (await readLiveStopLock()).required;
     res.json({
       ok: true,
       tracking: car.tracking,
@@ -832,6 +1003,7 @@ app.post(
       flagStatus,
       flagTs,
       flagAcked: hasAckedFlag(car, live),
+      stopLock,
     });
   })
 );
@@ -1318,6 +1490,7 @@ function startLocal() {
     console.log(`  Local:     http://localhost:${PORT}`);
     for (const ip of ips) console.log(`  Network:   http://${ip}:${PORT}`);
     console.log("");
+    ensureDefaultDriverStopCodes();
   });
 }
 

@@ -166,29 +166,8 @@ class RallyApi(baseUrl: String) {
         }
     }
 
-    fun stop(id: String, token: String) {
-        val payload = JSONObject()
-            .put("id", id)
-            .put("token", token)
-            .toString()
-            .toRequestBody(jsonType)
-
-        val request = Request.Builder()
-            .url("$root/api/stop")
-            .post(payload)
-            .build()
-
-        client.newCall(request).execute().use { response ->
-            if (!response.isSuccessful) {
-                val text = response.body?.string().orEmpty()
-                val json = runCatching { JSONObject(text) }.getOrElse { JSONObject() }
-                throw IllegalStateException(json.optString("error", "Stop failed (${response.code})"))
-            }
-        }
-    }
-
     private fun parsePingJson(json: JSONObject, section: JSONObject?): PingResult {
-        val flag = json.optString("flagStatus").ifBlank {
+            val flag = json.optString("flagStatus").ifBlank {
             section?.optString("flagStatus").orEmpty()
         }
         return PingResult(
@@ -199,7 +178,53 @@ class RallyApi(baseUrl: String) {
             flagStatus = if (flag == "red") "red" else "green",
             flagTs = json.optLong("flagTs", section?.optLong("flagTs", 0L) ?: 0L),
             flagAcked = json.optBoolean("flagAcked", flag != "red"),
-            reconnectRequested = json.optBoolean("reconnectRequested", false)
+            reconnectRequested = json.optBoolean("reconnectRequested", false),
+            stopLock = if (json.has("stopLock")) json.getBoolean("stopLock") else null
         )
     }
+
+    fun fetchStopLock(): Boolean {
+        val request = Request.Builder()
+            .url("$root/api/stop-lock")
+            .get()
+            .build()
+        client.newCall(request).execute().use { response ->
+            val text = response.body?.string().orEmpty()
+            val json = runCatching { JSONObject(text) }.getOrElse { JSONObject() }
+            if (!response.isSuccessful) {
+                throw IllegalStateException(json.optString("error", "Stop lock check failed (${response.code})"))
+            }
+            return json.optBoolean("stopLock", false)
+        }
+    }
+
+    fun stop(id: String, token: String, code: String? = null) {
+        val payload = JSONObject()
+            .put("id", id)
+            .put("token", token)
+        if (!code.isNullOrBlank()) payload.put("code", code)
+
+        val request = Request.Builder()
+            .url("$root/api/stop")
+            .post(payload.toString().toRequestBody(jsonType))
+            .build()
+
+        client.newCall(request).execute().use { response ->
+            if (response.isSuccessful) return
+            val text = response.body?.string().orEmpty()
+            val json = runCatching { JSONObject(text) }.getOrElse { JSONObject() }
+            if (response.code == 403 || response.code == 429) {
+                throw StopRejectedException(
+                    json.optString("error", "Wrong stop code."),
+                    needCode = json.optBoolean("needCode", false)
+                )
+            }
+            throw IllegalStateException(json.optString("error", "Stop failed (${response.code})"))
+        }
+    }
 }
+
+class StopRejectedException(
+    message: String,
+    val needCode: Boolean
+) : IllegalStateException(message)

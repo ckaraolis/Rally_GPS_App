@@ -8,7 +8,7 @@
   <link rel="manifest" href="/manifest.json" />
   <link rel="icon" href="/icons/icon.svg" type="image/svg+xml" />
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-  <link rel="stylesheet" href="/css/app.css?v=flagtarget1" />
+  <link rel="stylesheet" href="/css/app.css?v=stoplock1" />
 </head>
 <body class="control-body">
   <div class="tape" aria-hidden="true"></div>
@@ -48,6 +48,20 @@
       <ul id="rallyList" class="car-list">
         <li class="empty">No rallies yet</li>
       </ul>
+    </div>
+
+    <div class="earth-box">
+      <p class="eyebrow">Driver stop code</p>
+      <p class="hint">New rallies get a default organiser PIN (hashed on the server). While that rally is <strong>LIVE</strong>, driver phones must enter it to stop tracking — they never see the preset. Change or clear it here. This is not the race control sign-in password. HQ should see a <strong>STOP LOCK</strong> badge once the hash is saved.</p>
+      <p id="stopCodeStatus" class="hint">Create a rally — a default stop lock is applied automatically.</p>
+      <form id="stopCodeForm" class="rally-form">
+        <label>
+          New PIN
+          <input id="stopCodeInput" name="driver-stop-code" type="password" inputmode="numeric" maxlength="6" autocomplete="off" pattern="[0-9]*" placeholder="4–6 digits" />
+        </label>
+        <button type="submit" class="btn btn-amber">Save stop code</button>
+        <button id="clearStopCode" type="button" class="btn btn-ghost">Clear stop code</button>
+      </form>
     </div>
     <div class="earth-box">
       <p class="eyebrow">Google Earth</p>
@@ -119,6 +133,6 @@
   </div>
 
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-  <script src="/js/control.js?v=flagtarget1"></script>
+  <script src="/js/control.js?v=stoplock1"></script>
 </body>
 </html>

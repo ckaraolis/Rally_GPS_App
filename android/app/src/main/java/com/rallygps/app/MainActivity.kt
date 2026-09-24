@@ -17,10 +17,16 @@ import android.os.Handler
 import android.os.Looper
 import android.os.PowerManager
 import android.provider.Settings
+import android.text.InputFilter
+import android.text.InputType
+import android.text.method.PasswordTransformationMethod
 import android.view.MotionEvent
 import android.view.View
+import android.widget.EditText
 import android.widget.Toast
+import androidx.activity.OnBackPressedCallback
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
 import com.rallygps.app.databinding.ActivityMainBinding
@@ -54,6 +60,34 @@ class MainActivity : AppCompatActivity() {
     private var holdAnimator: ValueAnimator? = null
     private var holdFill: View? = null
     private var holdHintTick: Runnable? = null
+    private var stopLock: Boolean? = null
+    private var stopDialog: AlertDialog? = null
+    private var pendingAfterStop: (() -> Unit)? = null
+
+    private val backCallback = object : OnBackPressedCallback(true) {
+        override fun handleOnBackPressed() {
+            if (stopDialog?.isShowing == true) {
+                pendingAfterStop = null
+                stopDialog?.dismiss()
+                return
+            }
+            val active = tracking || TrackingService.isActive
+            if (active) {
+                if (shouldShowRedFlag() || crewAlertVisible) return
+                if (stopLock == true) {
+                    showStopCodeDialog(null)
+                    return
+                }
+                if (stopLock == false) {
+                    leaveTrackingScreen()
+                    return
+                }
+                probeStopLockThenLeave()
+                return
+            }
+            leaveTrackingScreen()
+        }
+    }
 
     private val permissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
@@ -137,6 +171,11 @@ class MainActivity : AppCompatActivity() {
                     intent.getBooleanExtra(TrackingActions.EXTRA_FLAG_ACKED, true)
                 )
             }
+            if (intent.hasExtra(TrackingActions.EXTRA_STOP_LOCK)) {
+                val locked = intent.getBooleanExtra(TrackingActions.EXTRA_STOP_LOCK, false)
+                stopLock = locked
+                SessionStore.setStopLock(this, locked)
+            }
 
             val speed = if (intent.hasExtra(TrackingActions.EXTRA_SPEED)) {
                 intent.getFloatExtra(TrackingActions.EXTRA_SPEED, 0f)
@@ -179,6 +218,7 @@ class MainActivity : AppCompatActivity() {
         crewStatusSent = savedInstanceState?.getString(STATE_CREW_STATUS)
         inStage = savedInstanceState?.getBoolean(STATE_IN_STAGE) ?: false
         stageId = savedInstanceState?.getString(STATE_STAGE_ID)
+        stopLock = SessionStore.stopLock(this)
         if (session != null) {
             tracking = SessionStore.trackingWanted(this) || TrackingService.isActive
             showTrackPanel()
@@ -186,16 +226,24 @@ class MainActivity : AppCompatActivity() {
             showSetupPanel()
         }
 
+        onBackPressedDispatcher.addCallback(this, backCallback)
         binding.continueBtn.setOnClickListener { joinRally() }
         binding.toggleBtn.setOnClickListener {
-            if (tracking) stopTrackingService() else ensurePermissionsAndStart()
+            if (tracking) requestStopTracking() else ensurePermissionsAndStart()
         }
-        binding.stageStopBtn.setOnClickListener { stopTrackingService() }
+        binding.stageStopBtn.setOnClickListener { requestStopTracking() }
         binding.changeCarBtn.setOnClickListener {
-            stopTrackingService()
-            SessionStore.clear(this)
-            session = null
-            showSetupPanel()
+            if (tracking || TrackingService.isActive) {
+                requestStopTracking {
+                    SessionStore.clear(this)
+                    session = null
+                    showSetupPanel()
+                }
+            } else {
+                SessionStore.clear(this)
+                session = null
+                showSetupPanel()
+            }
         }
 
         bindHold(binding.okHoldWrap, binding.okHoldFill, "ok")
@@ -203,12 +251,19 @@ class MainActivity : AppCompatActivity() {
         bindHold(binding.alertOkHoldWrap, binding.alertOkHoldFill, "ok")
         bindHold(binding.alertSosHoldWrap, binding.alertSosHoldFill, "sos")
         applyCrewStatusUi()
+        maybeHandleStopRequest(intent)
         binding.redFlagOkBtn.setOnClickListener {
             flagAcked = true
             hideRedFlagAlert()
             sendFlagAck()
             renderMode()
         }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        maybeHandleStopRequest(intent)
     }
 
     override fun onStart() {
@@ -292,6 +347,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun showCrewAlert() {
         if (shouldShowRedFlag()) return
+        dismissStopDialog()
         cancelHold()
         crewAlertVisible = true
         binding.crewAlert.visibility = View.VISIBLE
@@ -308,6 +364,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun showRedFlagAlert() {
+        dismissStopDialog()
         cancelHold()
         redFlagVisible = true
         hideCrewAlert()
@@ -714,11 +771,158 @@ class MainActivity : AppCompatActivity() {
         ContextCompat.startForegroundService(this, intent)
         tracking = true
         renderMode()
+        refreshStopLock()
     }
 
-    private fun stopTrackingService() {
+    private fun refreshStopLock() {
+        val current = session ?: return
+        io.execute {
+            val locked = runCatching { RallyApi(current.serverUrl).fetchStopLock() }.getOrNull() ?: return@execute
+            SessionStore.setStopLock(this, locked)
+            runOnUiThread {
+                stopLock = locked
+                if (tracking) renderMode()
+            }
+        }
+    }
+
+    private fun requestStopTracking(after: (() -> Unit)? = null) {
+        if (shouldShowRedFlag() || crewAlertVisible) return
+        val active = tracking || TrackingService.isActive
+        if (!active) {
+            after?.invoke()
+            return
+        }
+        pendingAfterStop = after
+        if (stopLock == true) {
+            showStopCodeDialog(null)
+            return
+        }
+        verifyStopCode(null)
+    }
+
+    private fun verifyStopCode(code: String?) {
+        val current = session
+        if (current == null) {
+            finishStop(code)
+            return
+        }
+        io.execute {
+            try {
+                RallyApi(current.serverUrl).stop(current.id, current.token, code)
+                runOnUiThread { finishStop(code) }
+            } catch (error: StopRejectedException) {
+                runOnUiThread {
+                    stopLock = true
+                    SessionStore.setStopLock(this, true)
+                    stopDialog?.getButton(AlertDialog.BUTTON_POSITIVE)?.isEnabled = true
+                    val message = if (error.needCode && code.isNullOrBlank()) null else error.message
+                    showStopCodeDialog(message)
+                    renderMode()
+                }
+            } catch (_: Exception) {
+                runOnUiThread {
+                    stopDialog?.getButton(AlertDialog.BUTTON_POSITIVE)?.isEnabled = true
+                    if (stopLock == true) {
+                        showStopCodeDialog(getString(R.string.stop_code_offline))
+                    } else {
+                        finishStop(code)
+                    }
+                }
+            }
+        }
+    }
+
+    private fun finishStop(code: String?) {
+        val after = pendingAfterStop
+        pendingAfterStop = null
+        dismissStopDialog()
+        stopTrackingService(code)
+        after?.invoke()
+    }
+
+    private fun showStopCodeDialog(errorText: String?) {
+        if (shouldShowRedFlag() || crewAlertVisible) return
+        val showing = stopDialog
+        if (showing?.isShowing == true) {
+            showing.setMessage(errorText ?: getString(R.string.stop_code_message))
+            showing.getButton(AlertDialog.BUTTON_POSITIVE)?.isEnabled = true
+            return
+        }
+        val input = EditText(this).apply {
+            inputType = InputType.TYPE_CLASS_NUMBER
+            transformationMethod = PasswordTransformationMethod.getInstance()
+            filters = arrayOf(InputFilter.LengthFilter(6))
+            hint = getString(R.string.stop_code_hint)
+            setPadding(48, 24, 48, 24)
+        }
+        val dialog = AlertDialog.Builder(this)
+            .setTitle(R.string.stop_code_title)
+            .setMessage(errorText ?: getString(R.string.stop_code_message))
+            .setView(input)
+            .setNegativeButton(android.R.string.cancel) { _, _ -> pendingAfterStop = null }
+            .setPositiveButton(R.string.stop_code_unlock, null)
+            .create()
+        dialog.setOnCancelListener { pendingAfterStop = null }
+        dialog.setOnShowListener {
+            dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
+                val code = input.text?.toString()?.trim().orEmpty()
+                if (!code.matches(Regex("\\d{4,6}"))) {
+                    dialog.setMessage(getString(R.string.stop_code_format))
+                    return@setOnClickListener
+                }
+                dialog.getButton(AlertDialog.BUTTON_POSITIVE).isEnabled = false
+                verifyStopCode(code)
+            }
+        }
+        dialog.setOnDismissListener {
+            if (stopDialog === dialog) stopDialog = null
+        }
+        stopDialog = dialog
+        dialog.show()
+    }
+
+    private fun dismissStopDialog() {
+        stopDialog?.dismiss()
+        stopDialog = null
+    }
+
+    private fun maybeHandleStopRequest(source: Intent?) {
+        if (source?.action != TrackingService.ACTION_REQUEST_STOP) return
+        source.action = Intent.ACTION_MAIN
+        if (!(tracking || TrackingService.isActive || SessionStore.trackingWanted(this))) return
+        if (shouldShowRedFlag() || crewAlertVisible) return
+        requestStopTracking()
+    }
+
+    private fun probeStopLockThenLeave() {
+        val current = session
+        if (current == null) {
+            leaveTrackingScreen()
+            return
+        }
+        io.execute {
+            val locked = runCatching { RallyApi(current.serverUrl).fetchStopLock() }.getOrNull()
+            runOnUiThread {
+                if (locked != null) {
+                    stopLock = locked
+                    SessionStore.setStopLock(this, locked)
+                }
+                if (stopLock == true) showStopCodeDialog(null) else leaveTrackingScreen()
+            }
+        }
+    }
+
+    private fun leaveTrackingScreen() {
+        backCallback.isEnabled = false
+        onBackPressedDispatcher.onBackPressed()
+        backCallback.isEnabled = true
+    }
+
+    private fun stopTrackingService(code: String? = null) {
         SessionStore.setTrackingWanted(this, false)
         val intent = Intent(this, TrackingService::class.java).setAction(TrackingService.ACTION_STOP)
+        if (!code.isNullOrBlank()) intent.putExtra(TrackingService.EXTRA_STOP_CODE, code)
         startService(intent)
         tracking = false
         inStage = false
@@ -765,6 +969,7 @@ class MainActivity : AppCompatActivity() {
             binding.trackPanel.visibility = View.GONE
             binding.stagePanel.visibility = View.VISIBLE
             binding.stageName.text = stageName ?: "SPECIAL STAGE"
+            binding.stageLockNote.visibility = if (stopLock == true) View.VISIBLE else View.GONE
             applyStageFlagUi()
         } else {
             binding.stagePanel.visibility = View.GONE
@@ -772,7 +977,9 @@ class MainActivity : AppCompatActivity() {
             updateRoadSectionUi()
             if (tracking) {
                 binding.statusText.setText(R.string.status_tracking)
-                binding.statusHint.setText(R.string.status_hint_tracking)
+                binding.statusHint.setText(
+                    if (stopLock == true) R.string.status_hint_locked else R.string.status_hint_tracking
+                )
                 binding.statusText.setTextColor(ContextCompat.getColor(this, R.color.go))
                 binding.toggleBtn.setText(R.string.stop_tracking)
                 binding.toggleBtn.backgroundTintList =
@@ -786,6 +993,7 @@ class MainActivity : AppCompatActivity() {
                 binding.toggleBtn.backgroundTintList =
                     ContextCompat.getColorStateList(this, R.color.go)
                 binding.toggleBtn.setTextColor(ContextCompat.getColor(this, R.color.black))
+                binding.stageLockNote.visibility = View.GONE
             }
         }
     }

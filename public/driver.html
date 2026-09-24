@@ -10,16 +10,17 @@
   <title>Driver · Rally GPS</title>
   <link rel="manifest" href="/manifest.json" />
   <link rel="icon" href="/icons/icon.svg" type="image/svg+xml" />
-  <link rel="stylesheet" href="/css/app.css?v=testmode1" />
+  <link rel="stylesheet" href="/css/app.css?v=stoplock1" />
 </head>
 <body class="driver-body">
   <div class="tape" aria-hidden="true"></div>
   <main class="driver-shell">
     <header class="driver-top">
-      <a class="back" href="/">Rally GPS</a>
+      <a id="driverHome" class="back" href="/">Rally GPS</a>
       <p id="secureNote" class="secure-note hidden"></p>
     </header>
     <p id="bgTrackNote" class="bg-track-note hidden" role="status"></p>
+    <p id="lockNote" class="lock-note hidden">Tracking is locked. Keep this screen open. Stop tracking needs the organiser code. Red flag, OK, and SOS still work.</p>
 
     <section id="setupPanel" class="panel">
       <p class="eyebrow">Door plate</p>
@@ -136,7 +137,23 @@
       <p>Stage stopped. Confirm the crew has seen this red flag.</p>
       <button id="redFlagOkBtn" type="button" class="btn btn-amber alert-btn">OK<small>CONFIRMED</small></button>
     </section>
+
+    <div id="stopLockModal" class="flag-modal stop-lock-modal hidden" role="dialog" aria-modal="true" aria-labelledby="stopLockTitle" hidden>
+      <form id="stopLockForm" class="flag-modal-card">
+        <h2 id="stopLockTitle">Stop tracking</h2>
+        <p class="hint">Enter the organiser stop code. A wrong code leaves tracking on.</p>
+        <label>
+          Organiser code
+          <input id="stopLockCode" name="rally-driver-stop-code" type="password" inputmode="numeric" maxlength="6" autocomplete="off" pattern="[0-9]*" placeholder="4–6 digits" />
+        </label>
+        <p id="stopLockError" class="error hidden"></p>
+        <div class="flag-modal-actions">
+          <button id="stopLockCancel" type="button" class="btn btn-ghost">Cancel</button>
+          <button id="stopLockConfirm" type="submit" class="btn btn-stop">Unlock and stop</button>
+        </div>
+      </form>
+    </div>
   </main>
-  <script src="/js/driver.js?v=flagtarget1"></script>
+  <script src="/js/driver.js?v=stoplock1"></script>
 </body>
 </html>

@@ -31,6 +31,13 @@ alter table rally_control_users enable row level security;
 alter table rally_events
   add column if not exists pin_icons jsonb;
 
+-- Organiser PIN that driver phones must send to stop tracking. Store only a hash.
+alter table rally_events
+  add column if not exists driver_stop_salt text;
+
+alter table rally_events
+  add column if not exists driver_stop_hash text;
+
 -- Attach each KMZ/route to one rally event (not a single system-wide route).
 -- Requires rally_sections from schema_routes.sql.
 do $$

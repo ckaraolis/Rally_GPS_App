@@ -18,4 +18,5 @@ object TrackingActions {
     const val EXTRA_FLAG_STATUS = "flagStatus"
     const val EXTRA_FLAG_TS = "flagTs"
     const val EXTRA_FLAG_ACKED = "flagAcked"
+    const val EXTRA_STOP_LOCK = "stopLock"
 }

@@ -776,6 +776,25 @@ input {
 .rally-badge.ended { background: #3d7dff; color: #fff; }
 .rally-badge.history { background: var(--amber); color: #111; }
 .rally-badge.route { background: #fff3c4; color: #111; }
+.rally-badge.lock { background: #c45c12; color: #fff; }
+.lock-note {
+  margin: 0 0 12px;
+  padding: 10px 12px;
+  background: #2a2208;
+  color: var(--amber);
+  border: 1px solid var(--amber);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-size: 0.82rem;
+}
+.stop-lock-modal {
+  z-index: 40;
+  place-items: end center;
+  background: rgba(8, 9, 7, 0.35);
+  pointer-events: none;
+}
+.stop-lock-modal .flag-modal-card { pointer-events: auto; }
+.stop-lock-modal .btn-stop { min-height: 52px; font-size: 1.05rem; }
 .car-list li.car-row.selected-rally {
   outline: 1px solid var(--amber);
   background: rgba(255, 196, 60, 0.08);
