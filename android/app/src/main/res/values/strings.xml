@@ -22,7 +22,7 @@
     <string name="stop_code_hint">4–6 digit code</string>
     <string name="stop_code_format">Enter the 4–6 digit organiser code.</string>
     <string name="stop_code_unlock">Unlock and stop</string>
-    <string name="stop_code_offline">No signal. Tracking stays on until the code can be checked.</string>
+    <string name="stop_code_offline">No signal. Enter the organiser code to unlock offline, or wait for signal.</string>
     <string name="stage_lock_note">Tracking is locked. OK and SOS still work. Stop needs the organiser code.</string>
     <string name="status_hint_queued">No GSM. GPS is saved on the phone and will appear on the map when signal returns.</string>
     <string name="notification_title">Rally GPS tracking</string>

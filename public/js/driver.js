@@ -34,12 +34,16 @@ const TEST_MODE = isRallyTestPage();
 
 let session = null;
 let stopLock = null;
+let stopUnlockSalt = null;
+let stopUnlockOffline = null;
 let stopBusy = false;
 let exitGuardArmed = false;
 try {
   const savedLock = sessionStorage.getItem("rallyStopLock");
   if (savedLock === "1") stopLock = true;
   else if (savedLock === "0") stopLock = false;
+  stopUnlockSalt = sessionStorage.getItem("rallyStopSalt") || null;
+  stopUnlockOffline = sessionStorage.getItem("rallyStopOffline") || null;
 } catch {
   /* private mode */
 }
@@ -713,11 +717,25 @@ function safetyAlertOpen() {
   return shouldShowRedFlag() || (crewAlert && !crewAlert.classList.contains("hidden"));
 }
 
-function noteStopLock(value) {
+function noteStopLock(value, salt, offline) {
   if (value !== true && value !== false) return;
   stopLock = value;
+  if (value === true && salt && offline) {
+    stopUnlockSalt = salt;
+    stopUnlockOffline = offline;
+  } else if (value === false) {
+    stopUnlockSalt = null;
+    stopUnlockOffline = null;
+  }
   try {
     sessionStorage.setItem("rallyStopLock", value ? "1" : "0");
+    if (stopUnlockSalt && stopUnlockOffline) {
+      sessionStorage.setItem("rallyStopSalt", stopUnlockSalt);
+      sessionStorage.setItem("rallyStopOffline", stopUnlockOffline);
+    } else if (value === false) {
+      sessionStorage.removeItem("rallyStopSalt");
+      sessionStorage.removeItem("rallyStopOffline");
+    }
   } catch {
     /* private mode */
   }
@@ -727,13 +745,24 @@ function noteStopLock(value) {
   updateStageLockNote();
 }
 
+async function sha256Hex(text) {
+  const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(text));
+  return [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+
+async function matchesOfflineStop(code) {
+  if (!stopUnlockSalt || !stopUnlockOffline || !/^\d{4,6}$/.test(code)) return false;
+  const next = await sha256Hex(`${stopUnlockSalt}:${code}`);
+  return next === stopUnlockOffline;
+}
+
 async function refreshStopLock() {
   if (TEST_MODE) return;
   try {
     const res = await fetch("/api/stop-lock");
     const data = await res.json().catch(() => ({}));
     if (res.ok && typeof data.stopLock === "boolean") {
-      noteStopLock(data.stopLock);
+      noteStopLock(data.stopLock, data.salt, data.offline);
       return;
     }
   } catch {
@@ -841,8 +870,11 @@ async function serverStop(code) {
     }
     return true;
   } catch {
+    if (code && (await matchesOfflineStop(code))) return true;
     if (stopLikelyLocked()) {
-      openStopLockDialog("No signal. Tracking stays on until the code can be checked.");
+      openStopLockDialog(
+        "No signal. Enter the organiser code to unlock offline, or wait for signal."
+      );
     }
     return false;
   } finally {

@@ -9,6 +9,8 @@ object SessionStore {
     private const val KEY_TRACKING = "trackingWanted"
     private const val KEY_STOP_LOCK_KNOWN = "stopLockKnown"
     private const val KEY_STOP_LOCK = "stopLock"
+    private const val KEY_STOP_SALT = "stopSalt"
+    private const val KEY_STOP_OFFLINE = "stopOffline"
     private const val KEY_THEME = "themeMode"
 
     const val THEME_DARK = "dark"
@@ -59,12 +61,17 @@ object SessionStore {
             .getBoolean(KEY_TRACKING, false)
     }
 
-    fun setStopLock(context: Context, locked: Boolean) {
-        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+    fun setStopLock(context: Context, locked: Boolean, salt: String? = null, offline: String? = null) {
+        val edit = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
             .edit()
             .putBoolean(KEY_STOP_LOCK_KNOWN, true)
             .putBoolean(KEY_STOP_LOCK, locked)
-            .apply()
+        if (locked && !salt.isNullOrBlank() && !offline.isNullOrBlank()) {
+            edit.putString(KEY_STOP_SALT, salt).putString(KEY_STOP_OFFLINE, offline)
+        } else if (!locked) {
+            edit.remove(KEY_STOP_SALT).remove(KEY_STOP_OFFLINE)
+        }
+        edit.apply()
     }
 
     fun clearStopLockKnown(context: Context) {
@@ -72,6 +79,8 @@ object SessionStore {
             .edit()
             .remove(KEY_STOP_LOCK_KNOWN)
             .remove(KEY_STOP_LOCK)
+            .remove(KEY_STOP_SALT)
+            .remove(KEY_STOP_OFFLINE)
             .apply()
     }
 
@@ -81,6 +90,12 @@ object SessionStore {
         return prefs.getBoolean(KEY_STOP_LOCK, false)
     }
 
+    fun stopUnlockSalt(context: Context): String? =
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString(KEY_STOP_SALT, null)
+
+    fun stopUnlockOffline(context: Context): String? =
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString(KEY_STOP_OFFLINE, null)
+
     fun clear(context: Context) {
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
             .edit()
@@ -88,6 +103,8 @@ object SessionStore {
             .putBoolean(KEY_TRACKING, false)
             .remove(KEY_STOP_LOCK_KNOWN)
             .remove(KEY_STOP_LOCK)
+            .remove(KEY_STOP_SALT)
+            .remove(KEY_STOP_OFFLINE)
             .apply()
     }
 

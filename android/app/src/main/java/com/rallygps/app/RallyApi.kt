@@ -183,7 +183,7 @@ class RallyApi(baseUrl: String) {
         )
     }
 
-    fun fetchStopLock(): Boolean {
+    fun fetchStopLock(): StopLockInfo {
         val request = Request.Builder()
             .url("$root/api/stop-lock")
             .get()
@@ -194,7 +194,11 @@ class RallyApi(baseUrl: String) {
             if (!response.isSuccessful) {
                 throw IllegalStateException(json.optString("error", "Stop lock check failed (${response.code})"))
             }
-            return json.optBoolean("stopLock", false)
+            return StopLockInfo(
+                stopLock = json.optBoolean("stopLock", false),
+                salt = json.optString("salt", "").ifBlank { null },
+                offline = json.optString("offline", "").ifBlank { null }
+            )
         }
     }
 
@@ -228,3 +232,9 @@ class StopRejectedException(
     message: String,
     val needCode: Boolean
 ) : IllegalStateException(message)
+
+data class StopLockInfo(
+    val stopLock: Boolean,
+    val salt: String? = null,
+    val offline: String? = null
+)

@@ -569,7 +569,7 @@
         android:clickable="true"
         android:elevation="20dp"
         android:focusable="true"
-        android:gravity="center"
+        android:gravity="center_horizontal"
         android:orientation="vertical"
         android:paddingHorizontal="16dp"
         android:paddingVertical="12dp"

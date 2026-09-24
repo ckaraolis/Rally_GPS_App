@@ -38,6 +38,10 @@ alter table rally_events
 alter table rally_events
   add column if not exists driver_stop_hash text;
 
+-- SHA-256(salt:pin) so driver apps can unlock offline without the scrypt hash.
+alter table rally_events
+  add column if not exists driver_stop_offline text;
+
 -- Attach each KMZ/route to one rally event (not a single system-wide route).
 -- Requires rally_sections from schema_routes.sql.
 do $$

@@ -543,15 +543,20 @@ class MainActivity : AppCompatActivity() {
             if (landscape) LinearLayout.HORIZONTAL else LinearLayout.VERTICAL
         fun applyGaps(wrap: View, endOfFirst: Boolean) {
             val lp = wrap.layoutParams as LinearLayout.LayoutParams
-            lp.width = if (landscape) 0 else LinearLayout.LayoutParams.MATCH_PARENT
-            lp.height = 0
-            lp.weight = 1f
             if (landscape) {
+                // Horizontal parent: weight grows WIDTH; height must fill the row.
+                lp.width = 0
+                lp.height = LinearLayout.LayoutParams.MATCH_PARENT
+                lp.weight = 1f
                 lp.topMargin = 0
                 lp.bottomMargin = 0
                 lp.marginStart = if (endOfFirst) 0 else gap / 2
                 lp.marginEnd = if (endOfFirst) gap / 2 else 0
             } else {
+                // Vertical parent: weight grows HEIGHT; width fills.
+                lp.width = LinearLayout.LayoutParams.MATCH_PARENT
+                lp.height = 0
+                lp.weight = 1f
                 lp.marginStart = 0
                 lp.marginEnd = 0
                 lp.topMargin = if (endOfFirst) 0 else gap / 2
@@ -561,6 +566,7 @@ class MainActivity : AppCompatActivity() {
         }
         applyGaps(binding.alertOkHoldWrap, endOfFirst = true)
         applyGaps(binding.alertSosHoldWrap, endOfFirst = false)
+        binding.crewAlertButtons.requestLayout()
     }
 
     private fun hideCrewAlert() {
@@ -992,11 +998,11 @@ class MainActivity : AppCompatActivity() {
     private fun refreshStopLock() {
         val current = session ?: return
         io.execute {
-            val locked = runCatching { RallyApi(current.serverUrl).fetchStopLock() }.getOrNull()
+            val info = runCatching { RallyApi(current.serverUrl).fetchStopLock() }.getOrNull()
             runOnUiThread {
-                if (locked != null) {
-                    stopLock = locked
-                    SessionStore.setStopLock(this, locked)
+                if (info != null) {
+                    stopLock = info.stopLock
+                    SessionStore.setStopLock(this, info.stopLock, info.salt, info.offline)
                 } else if (stopLock == false) {
                     // Stale unlock is unsafe if we cannot re-check.
                     stopLock = null
@@ -1015,6 +1021,8 @@ class MainActivity : AppCompatActivity() {
             return
         }
         pendingAfterStop = after
+        // Refresh salt/offline proof while we still might have signal.
+        refreshStopLock()
         // Fail closed: prompt unless the server explicitly said unlocked.
         if (stopLock != false) {
             showStopCodeDialog(null)
@@ -1043,10 +1051,20 @@ class MainActivity : AppCompatActivity() {
                     renderMode()
                 }
             } catch (_: Exception) {
+                // No signal: unlock locally when the cached offline proof matches the PIN.
+                val okOffline = !code.isNullOrBlank() &&
+                    StopUnlock.matches(
+                        code,
+                        SessionStore.stopUnlockSalt(this),
+                        SessionStore.stopUnlockOffline(this)
+                    )
                 runOnUiThread {
                     stopDialog?.getButton(AlertDialog.BUTTON_POSITIVE)?.isEnabled = true
-                    // Fail closed — never stop when the server cannot verify the code.
-                    showStopCodeDialog(getString(R.string.stop_code_offline))
+                    if (okOffline) {
+                        finishStop(code)
+                    } else {
+                        showStopCodeDialog(getString(R.string.stop_code_offline))
+                    }
                 }
             }
         }
@@ -1121,11 +1139,11 @@ class MainActivity : AppCompatActivity() {
             return
         }
         io.execute {
-            val locked = runCatching { RallyApi(current.serverUrl).fetchStopLock() }.getOrNull()
+            val info = runCatching { RallyApi(current.serverUrl).fetchStopLock() }.getOrNull()
             runOnUiThread {
-                if (locked != null) {
-                    stopLock = locked
-                    SessionStore.setStopLock(this, locked)
+                if (info != null) {
+                    stopLock = info.stopLock
+                    SessionStore.setStopLock(this, info.stopLock, info.salt, info.offline)
                 }
                 // Fail closed when unknown or locked.
                 if (stopLock == false) leaveTrackingScreen() else showStopCodeDialog(null)

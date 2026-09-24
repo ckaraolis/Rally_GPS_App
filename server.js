@@ -329,7 +329,17 @@ const stopLockOptOut = new Set();
 
 function rememberStopLock(rally) {
   if (!rally?.id || !rally.driverStopSalt || !rally.driverStopHash) return;
-  stopLockByRally.set(rally.id, { salt: rally.driverStopSalt, hash: rally.driverStopHash });
+  const offline =
+    rally.driverStopOffline ||
+    (auth.verifyPassword(auth.DEFAULT_DRIVER_STOP_CODE, rally.driverStopSalt, rally.driverStopHash)
+      ? auth.offlineStopProof(auth.DEFAULT_DRIVER_STOP_CODE, rally.driverStopSalt)
+      : null);
+  if (offline && !rally.driverStopOffline) rally.driverStopOffline = offline;
+  stopLockByRally.set(rally.id, {
+    salt: rally.driverStopSalt,
+    hash: rally.driverStopHash,
+    offline: offline || null,
+  });
   stopLockOptOut.delete(rally.id);
 }
 
@@ -342,12 +352,14 @@ function mergeRememberedStopLock(rally) {
   if (stopLockOptOut.has(rally.id)) {
     rally.driverStopSalt = null;
     rally.driverStopHash = null;
+    rally.driverStopOffline = null;
     return rally;
   }
   const cached = stopLockByRally.get(rally.id);
   if (cached?.salt && cached?.hash) {
     rally.driverStopSalt = cached.salt;
     rally.driverStopHash = cached.hash;
+    if (cached.offline) rally.driverStopOffline = cached.offline;
   }
   return rally;
 }
@@ -355,11 +367,27 @@ function mergeRememberedStopLock(rally) {
 function applyDefaultDriverStopCode(rally) {
   if (!rally) return false;
   mergeRememberedStopLock(rally);
-  if (rally.driverStopHash) return false;
+  if (rally.driverStopHash) {
+    // Backfill offline proof for the default PIN so phones can unlock without signal.
+    if (
+      !rally.driverStopOffline &&
+      rally.driverStopSalt &&
+      auth.verifyPassword(auth.DEFAULT_DRIVER_STOP_CODE, rally.driverStopSalt, rally.driverStopHash)
+    ) {
+      rally.driverStopOffline = auth.offlineStopProof(
+        auth.DEFAULT_DRIVER_STOP_CODE,
+        rally.driverStopSalt
+      );
+      rememberStopLock(rally);
+      return true;
+    }
+    return false;
+  }
   if (stopLockOptOut.has(rally.id)) return false;
   const { salt, hash } = auth.hashPassword(auth.DEFAULT_DRIVER_STOP_CODE);
   rally.driverStopSalt = salt;
   rally.driverStopHash = hash;
+  rally.driverStopOffline = auth.offlineStopProof(auth.DEFAULT_DRIVER_STOP_CODE, salt);
   rememberStopLock(rally);
   return true;
 }
@@ -503,11 +531,11 @@ function pingPayload(car, sections, stopLock = false) {
   };
 }
 
-let stopLockCache = { at: 0, required: false, salt: null, hash: null, rallyId: null };
+let stopLockCache = { at: 0, required: false, salt: null, hash: null, offline: null, rallyId: null };
 const stopCodeAttempts = new Map();
 
 function invalidateStopLockCache() {
-  stopLockCache = { at: 0, required: false, salt: null, hash: null, rallyId: null };
+  stopLockCache = { at: 0, required: false, salt: null, hash: null, offline: null, rallyId: null };
 }
 
 async function healLiveStopLock(rally) {
@@ -532,6 +560,7 @@ async function readLiveStopLock() {
   let required = false;
   let salt = null;
   let hash = null;
+  let offline = null;
   let rallyId = null;
   try {
     await ensureDefaultDriverStopCodes();
@@ -542,6 +571,12 @@ async function readLiveStopLock() {
       full = await healLiveStopLock(full);
       salt = full.driverStopSalt || null;
       hash = full.driverStopHash || null;
+      offline = full.driverStopOffline || stopLockByRally.get(rallyId)?.offline || null;
+      if (!offline && salt && hash && auth.verifyPassword(auth.DEFAULT_DRIVER_STOP_CODE, salt, hash)) {
+        offline = auth.offlineStopProof(auth.DEFAULT_DRIVER_STOP_CODE, salt);
+        full.driverStopOffline = offline;
+        rememberStopLock(full);
+      }
       required = Boolean(salt && hash);
       // Fail closed for LIVE rallies: if opt-out was not set and we still lack a hash,
       // use an ephemeral default so stop cannot proceed without PIN verify.
@@ -549,14 +584,15 @@ async function readLiveStopLock() {
         const ephemeral = auth.hashPassword(auth.DEFAULT_DRIVER_STOP_CODE);
         salt = ephemeral.salt;
         hash = ephemeral.hash;
+        offline = auth.offlineStopProof(auth.DEFAULT_DRIVER_STOP_CODE, salt);
         required = true;
-        stopLockByRally.set(rallyId, { salt, hash });
+        stopLockByRally.set(rallyId, { salt, hash, offline });
       }
     }
   } catch (err) {
     console.error("stop lock", err.message);
   }
-  stopLockCache = { at: now, required, salt, hash, rallyId };
+  stopLockCache = { at: now, required, salt, hash, offline, rallyId };
   return stopLockCache;
 }
 
@@ -790,6 +826,10 @@ app.get(
     res.json({
       stopLock: lock.required,
       liveRallyId: lock.rallyId || null,
+      // Salt + offline proof let the phone verify the organiser PIN with no signal.
+      // Never send the PIN itself or the scrypt hash used server-side.
+      salt: lock.required ? lock.salt || null : null,
+      offline: lock.required ? lock.offline || null : null,
     });
   })
 );
@@ -954,6 +994,7 @@ app.post(
     if (req.body.clear === true) {
       rally.driverStopSalt = null;
       rally.driverStopHash = null;
+      rally.driverStopOffline = null;
       stopLockByRally.delete(rally.id);
       stopLockOptOut.add(rally.id);
     } else {
@@ -964,6 +1005,7 @@ app.post(
       const { salt, hash } = auth.hashPassword(code);
       rally.driverStopSalt = salt;
       rally.driverStopHash = hash;
+      rally.driverStopOffline = auth.offlineStopProof(code, salt);
       stopLockOptOut.delete(rally.id);
       rememberStopLock(rally);
     }
@@ -975,6 +1017,7 @@ app.post(
     if (req.body.clear === true) {
       saved.driverStopSalt = null;
       saved.driverStopHash = null;
+      saved.driverStopOffline = null;
     }
     res.json({
       ok: true,
