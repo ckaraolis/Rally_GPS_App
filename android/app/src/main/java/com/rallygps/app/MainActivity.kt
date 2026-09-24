@@ -175,7 +175,7 @@ class MainActivity : AppCompatActivity() {
             if (intent.hasExtra(TrackingActions.EXTRA_STOP_LOCK)) {
                 val locked = intent.getBooleanExtra(TrackingActions.EXTRA_STOP_LOCK, false)
                 stopLock = locked
-                SessionStore.setStopLock(this, locked)
+                SessionStore.setStopLock(this@MainActivity, locked)
             }
 
             val speed = if (intent.hasExtra(TrackingActions.EXTRA_SPEED)) {
