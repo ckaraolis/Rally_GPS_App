@@ -1,510 +1,533 @@
 <?xml version="1.0" encoding="utf-8"?>
 <FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:id="@+id/rootFrame"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="@color/bg">
+    android:background="@color/bg"
+    android:fitsSystemWindows="false">
 
-<ScrollView
-    android:layout_width="match_parent"
-    android:layout_height="match_parent"
-    android:fillViewport="true">
-
-    <LinearLayout
+    <ScrollView
+        android:id="@+id/contentScroll"
         android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:orientation="vertical"
-        android:padding="24dp">
+        android:layout_height="match_parent"
+        android:clipToPadding="false"
+        android:fillViewport="true">
 
-        <View
-            android:layout_width="match_parent"
-            android:layout_height="8dp"
-            android:background="@drawable/hazard_tape" />
-
-        <TextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="20dp"
-            android:letterSpacing="0.14"
-            android:text="@string/app_name"
-            android:textAllCaps="true"
-            android:textColor="@color/muted"
-            android:textSize="14sp" />
-
-        <FrameLayout
+        <LinearLayout
+            android:id="@+id/contentRoot"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="16dp">
+            android:gravity="center_horizontal"
+            android:orientation="vertical"
+            android:padding="0dp">
+
+            <View
+                android:layout_width="match_parent"
+                android:layout_height="8dp"
+                android:background="@drawable/hazard_tape" />
 
             <LinearLayout
-                android:id="@+id/setupPanel"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:orientation="vertical">
+                android:layout_marginTop="12dp"
+                android:gravity="center_vertical"
+                android:orientation="horizontal">
 
                 <TextView
-                    android:layout_width="wrap_content"
+                    android:layout_width="0dp"
                     android:layout_height="wrap_content"
-                    android:text="@string/join_title"
+                    android:layout_weight="1"
+                    android:letterSpacing="0.14"
+                    android:text="@string/app_name"
                     android:textAllCaps="true"
-                    android:textColor="@color/ink"
-                    android:textSize="40sp"
-                    android:textStyle="bold" />
-
-                <com.google.android.material.textfield.TextInputLayout
-                    style="@style/RallyInput"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="20dp"
-                    android:hint="@string/server_url">
-
-                    <com.google.android.material.textfield.TextInputEditText
-                        android:id="@+id/serverUrl"
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:inputType="textUri"
-                        android:textColor="@color/ink" />
-                </com.google.android.material.textfield.TextInputLayout>
-
-                <com.google.android.material.textfield.TextInputLayout
-                    style="@style/RallyInput"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="12dp"
-                    android:hint="@string/car_number">
-
-                    <com.google.android.material.textfield.TextInputEditText
-                        android:id="@+id/carNumber"
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:inputType="number"
-                        android:maxLength="8"
-                        android:textColor="@color/ink" />
-                </com.google.android.material.textfield.TextInputLayout>
-
-                <com.google.android.material.textfield.TextInputLayout
-                    style="@style/RallyInput"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="12dp"
-                    android:hint="@string/driver_name">
-
-                    <com.google.android.material.textfield.TextInputEditText
-                        android:id="@+id/driverName"
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:inputType="textPersonName"
-                        android:maxLength="40"
-                        android:textColor="@color/ink" />
-                </com.google.android.material.textfield.TextInputLayout>
-
-                <TextView
-                    android:id="@+id/setupError"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="12dp"
-                    android:textColor="@color/stop"
-                    android:textSize="15sp"
-                    android:visibility="gone" />
-
-                <com.google.android.material.button.MaterialButton
-                    android:id="@+id/continueBtn"
-                    android:layout_width="match_parent"
-                    android:layout_height="56dp"
-                    android:layout_marginTop="12dp"
-                    android:backgroundTint="@color/amber"
-                    android:text="@string/continue_btn"
-                    android:textColor="@color/black"
-                    android:textStyle="bold"
-                    app:cornerRadius="0dp" />
-            </LinearLayout>
-
-            <LinearLayout
-                android:id="@+id/trackPanel"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:orientation="vertical"
-                android:visibility="gone">
-
-                <LinearLayout
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:background="@drawable/plate_bg"
-                    android:orientation="horizontal"
-                    android:padding="14dp">
-
-                    <TextView
-                        android:id="@+id/plateNumber"
-                        android:layout_width="0dp"
-                        android:layout_height="wrap_content"
-                        android:layout_weight="1"
-                        android:text="#—"
-                        android:textAllCaps="true"
-                        android:textColor="@color/amber"
-                        android:textSize="28sp"
-                        android:textStyle="bold" />
-
-                    <TextView
-                        android:id="@+id/plateName"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:text="—"
-                        android:textAllCaps="true"
-                        android:textColor="@color/ink"
-                        android:textSize="22sp"
-                        android:textStyle="bold" />
-                </LinearLayout>
-
-                <LinearLayout
-                    android:id="@+id/statusLamp"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="16dp"
-                    android:background="@color/panel"
-                    android:gravity="center"
-                    android:orientation="vertical"
-                    android:padding="20dp">
-
-                    <TextView
-                        android:id="@+id/statusText"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:letterSpacing="0.16"
-                        android:text="@string/status_ready"
-                        android:textAllCaps="true"
-                        android:textColor="@color/ink"
-                        android:textSize="34sp"
-                        android:textStyle="bold" />
-
-                    <TextView
-                        android:id="@+id/statusHint"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:layout_marginTop="4dp"
-                        android:gravity="center"
-                        android:text="@string/status_hint_ready"
-                        android:textColor="@color/muted"
-                        android:textSize="14sp" />
-                </LinearLayout>
-
-                <LinearLayout
-                    android:id="@+id/roadSectionBox"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="12dp"
-                    android:background="#10244a"
-                    android:gravity="center"
-                    android:orientation="vertical"
-                    android:padding="16dp">
-
-                    <TextView
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:text="ROAD SECTION"
-                        android:textAllCaps="true"
-                        android:textColor="@color/muted"
-                        android:textSize="13sp" />
-
-                    <TextView
-                        android:id="@+id/roadSectionRead"
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:layout_marginTop="4dp"
-                        android:gravity="center"
-                        android:text="Start tracking"
-                        android:textAllCaps="true"
-                        android:textColor="#9CCCFF"
-                        android:textSize="22sp"
-                        android:textStyle="bold" />
-                </LinearLayout>
-
-                <GridLayout
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="16dp"
-                    android:columnCount="2"
-                    android:rowCount="2">
-
-                    <LinearLayout
-                        android:layout_width="0dp"
-                        android:layout_height="wrap_content"
-                        android:layout_columnWeight="1"
-                        android:layout_margin="1dp"
-                        android:background="@color/panel"
-                        android:orientation="vertical"
-                        android:padding="14dp">
-
-                        <TextView
-                            style="@style/RallyLabel"
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content"
-                            android:text="Speed" />
-
-                        <TextView
-                            android:id="@+id/speedRead"
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content"
-                            android:text="—"
-                            android:textColor="@color/ink"
-                            android:textSize="24sp" />
-                    </LinearLayout>
-
-                    <LinearLayout
-                        android:layout_width="0dp"
-                        android:layout_height="wrap_content"
-                        android:layout_columnWeight="1"
-                        android:layout_margin="1dp"
-                        android:background="@color/panel"
-                        android:orientation="vertical"
-                        android:padding="14dp">
-
-                        <TextView
-                            style="@style/RallyLabel"
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content"
-                            android:text="GPS" />
-
-                        <TextView
-                            android:id="@+id/accRead"
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content"
-                            android:text="—"
-                            android:textColor="@color/ink"
-                            android:textSize="24sp" />
-                    </LinearLayout>
-
-                    <LinearLayout
-                        android:layout_width="0dp"
-                        android:layout_height="wrap_content"
-                        android:layout_columnWeight="1"
-                        android:layout_margin="1dp"
-                        android:background="@color/panel"
-                        android:orientation="vertical"
-                        android:padding="14dp">
-
-                        <TextView
-                            style="@style/RallyLabel"
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content"
-                            android:text="Heading" />
-
-                        <TextView
-                            android:id="@+id/headRead"
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content"
-                            android:text="—"
-                            android:textColor="@color/ink"
-                            android:textSize="24sp" />
-                    </LinearLayout>
-
-                    <LinearLayout
-                        android:layout_width="0dp"
-                        android:layout_height="wrap_content"
-                        android:layout_columnWeight="1"
-                        android:layout_margin="1dp"
-                        android:background="@color/panel"
-                        android:orientation="vertical"
-                        android:padding="14dp">
-
-                        <TextView
-                            style="@style/RallyLabel"
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content"
-                            android:text="Fix" />
-
-                        <TextView
-                            android:id="@+id/fixRead"
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content"
-                            android:text="—"
-                            android:textColor="@color/ink"
-                            android:textSize="24sp" />
-                    </LinearLayout>
-                </GridLayout>
-
-                <TextView
-                    android:id="@+id/coordRead"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="12dp"
-                    android:text="Waiting for GPS"
                     android:textColor="@color/muted"
                     android:textSize="14sp" />
 
-                <TextView
-                    android:id="@+id/errorRead"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="8dp"
-                    android:textColor="@color/stop"
-                    android:textSize="14sp"
-                    android:visibility="gone" />
-
-                <com.google.android.material.button.MaterialButton
-                    android:id="@+id/toggleBtn"
-                    android:layout_width="match_parent"
-                    android:layout_height="72dp"
-                    android:layout_marginTop="16dp"
-                    android:backgroundTint="@color/go"
-                    android:text="@string/start_tracking"
-                    android:textColor="@color/black"
-                    android:textSize="18sp"
-                    android:textStyle="bold"
-                    app:cornerRadius="0dp" />
-
-                <com.google.android.material.button.MaterialButton
-                    android:id="@+id/changeCarBtn"
-                    style="@style/Widget.MaterialComponents.Button.OutlinedButton"
-                    android:layout_width="match_parent"
-                    android:layout_height="48dp"
-                    android:layout_marginTop="8dp"
-                    android:text="Change car / server"
-                    android:textColor="@color/muted"
-                    app:cornerRadius="0dp"
-                    app:strokeColor="@color/line" />
+                <ImageButton
+                    android:id="@+id/settingsBtn"
+                    android:layout_width="40dp"
+                    android:layout_height="40dp"
+                    android:background="?attr/selectableItemBackgroundBorderless"
+                    android:contentDescription="@string/settings_content_desc"
+                    android:padding="8dp"
+                    android:scaleType="centerInside"
+                    android:src="@drawable/ic_settings" />
             </LinearLayout>
 
-            <LinearLayout
-                android:id="@+id/stagePanel"
+            <FrameLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:orientation="vertical"
-                android:visibility="gone">
-
-                <TextView
-                    android:id="@+id/stageName"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:background="#2a0f0f"
-                    android:gravity="center"
-                    android:padding="18dp"
-                    android:text="STAGE"
-                    android:textAllCaps="true"
-                    android:textColor="@color/stop"
-                    android:textSize="28sp"
-                    android:textStyle="bold" />
+                android:layout_marginTop="12dp">
 
                 <LinearLayout
+                    android:id="@+id/setupPanel"
                     android:layout_width="match_parent"
-                    android:layout_height="220dp"
-                    android:layout_marginTop="12dp"
-                    android:orientation="horizontal">
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical">
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="@string/join_title"
+                        android:textAllCaps="true"
+                        android:textColor="@color/ink"
+                        android:textSize="40sp"
+                        android:textStyle="bold" />
+
+                    <com.google.android.material.textfield.TextInputLayout
+                        style="@style/RallyInput"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="20dp"
+                        android:hint="@string/server_url">
+
+                        <com.google.android.material.textfield.TextInputEditText
+                            android:id="@+id/serverUrl"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:inputType="textUri"
+                            android:textColor="@color/ink" />
+                    </com.google.android.material.textfield.TextInputLayout>
+
+                    <com.google.android.material.textfield.TextInputLayout
+                        style="@style/RallyInput"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="12dp"
+                        android:hint="@string/car_number">
+
+                        <com.google.android.material.textfield.TextInputEditText
+                            android:id="@+id/carNumber"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:inputType="number"
+                            android:maxLength="8"
+                            android:textColor="@color/ink" />
+                    </com.google.android.material.textfield.TextInputLayout>
+
+                    <com.google.android.material.textfield.TextInputLayout
+                        style="@style/RallyInput"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="12dp"
+                        android:hint="@string/driver_name">
+
+                        <com.google.android.material.textfield.TextInputEditText
+                            android:id="@+id/driverName"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:inputType="textPersonName"
+                            android:maxLength="40"
+                            android:textColor="@color/ink" />
+                    </com.google.android.material.textfield.TextInputLayout>
+
+                    <TextView
+                        android:id="@+id/setupError"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="12dp"
+                        android:textColor="@color/stop"
+                        android:textSize="15sp"
+                        android:visibility="gone" />
+
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/continueBtn"
+                        android:layout_width="match_parent"
+                        android:layout_height="56dp"
+                        android:layout_marginTop="12dp"
+                        android:backgroundTint="@color/amber"
+                        android:text="@string/continue_btn"
+                        android:textColor="@color/black"
+                        android:textStyle="bold"
+                        app:cornerRadius="0dp" />
+                </LinearLayout>
+
+                <LinearLayout
+                    android:id="@+id/trackPanel"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:visibility="gone">
 
                     <LinearLayout
-                        android:id="@+id/stageFlagBox"
-                        android:layout_width="0dp"
-                        android:layout_height="match_parent"
-                        android:layout_marginEnd="6dp"
-                        android:layout_weight="1"
-                        android:background="#10200c"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:background="@drawable/plate_bg"
+                        android:gravity="center_vertical"
+                        android:orientation="horizontal"
+                        android:padding="14dp">
+
+                        <TextView
+                            android:id="@+id/plateNumber"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="#—"
+                            android:textAllCaps="true"
+                            android:textColor="@color/amber"
+                            android:textSize="28sp"
+                            android:textStyle="bold" />
+
+                        <TextView
+                            android:id="@+id/plateName"
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_marginStart="12dp"
+                            android:layout_weight="1"
+                            android:ellipsize="end"
+                            android:gravity="end"
+                            android:maxLines="1"
+                            android:text="—"
+                            android:textAllCaps="true"
+                            android:textColor="@color/ink"
+                            android:textSize="22sp"
+                            android:textStyle="bold" />
+                    </LinearLayout>
+
+                    <LinearLayout
+                        android:id="@+id/statusLamp"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="16dp"
+                        android:background="@color/panel"
                         android:gravity="center"
                         android:orientation="vertical"
-                        android:padding="12dp">
+                        android:padding="20dp">
+
+                        <TextView
+                            android:id="@+id/statusText"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:letterSpacing="0.16"
+                            android:text="@string/status_ready"
+                            android:textAllCaps="true"
+                            android:textColor="@color/ink"
+                            android:textSize="34sp"
+                            android:textStyle="bold" />
+
+                        <TextView
+                            android:id="@+id/statusHint"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="4dp"
+                            android:gravity="center"
+                            android:text="@string/status_hint_ready"
+                            android:textColor="@color/muted"
+                            android:textSize="14sp" />
+                    </LinearLayout>
+
+                    <LinearLayout
+                        android:id="@+id/roadSectionBox"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="12dp"
+                        android:background="@color/road_on"
+                        android:gravity="center"
+                        android:orientation="vertical"
+                        android:padding="16dp">
 
                         <TextView
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
-                            android:text="STAGE STATUS"
+                            android:text="ROAD SECTION"
+                            android:textAllCaps="true"
+                            android:textColor="@color/muted"
+                            android:textSize="13sp" />
+
+                        <TextView
+                            android:id="@+id/roadSectionRead"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="4dp"
+                            android:gravity="center"
+                            android:text="Start tracking"
+                            android:textAllCaps="true"
+                            android:textColor="@color/road_text"
+                            android:textSize="22sp"
+                            android:textStyle="bold" />
+                    </LinearLayout>
+
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="16dp"
+                        android:orientation="horizontal">
+
+                        <LinearLayout
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_marginEnd="1dp"
+                            android:layout_weight="1"
+                            android:background="@color/panel"
+                            android:orientation="vertical"
+                            android:padding="14dp">
+
+                            <TextView
+                                style="@style/RallyLabel"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:text="Speed" />
+
+                            <TextView
+                                android:id="@+id/speedRead"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:text="—"
+                                android:textColor="@color/ink"
+                                android:textSize="24sp" />
+                        </LinearLayout>
+
+                        <LinearLayout
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_marginStart="1dp"
+                            android:layout_weight="1"
+                            android:background="@color/panel"
+                            android:orientation="vertical"
+                            android:padding="14dp">
+
+                            <TextView
+                                style="@style/RallyLabel"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:text="GPS" />
+
+                            <TextView
+                                android:id="@+id/accRead"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:text="—"
+                                android:textColor="@color/ink"
+                                android:textSize="24sp" />
+                        </LinearLayout>
+                    </LinearLayout>
+
+                    <TextView
+                        android:id="@+id/errorRead"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="8dp"
+                        android:textColor="@color/stop"
+                        android:textSize="14sp"
+                        android:visibility="gone" />
+
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/toggleBtn"
+                        android:layout_width="match_parent"
+                        android:layout_height="56dp"
+                        android:layout_marginTop="16dp"
+                        android:backgroundTint="@color/go"
+                        android:text="@string/start_tracking"
+                        android:textColor="@color/black"
+                        android:textSize="18sp"
+                        android:textStyle="bold"
+                        app:cornerRadius="0dp" />
+                </LinearLayout>
+
+                <LinearLayout
+                    android:id="@+id/stagePanel"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:visibility="gone">
+
+                    <TextView
+                        android:id="@+id/stageName"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:background="@color/stage_bg"
+                        android:gravity="center"
+                        android:padding="18dp"
+                        android:text="STAGE"
+                        android:textAllCaps="true"
+                        android:textColor="@color/stop"
+                        android:textSize="28sp"
+                        android:textStyle="bold" />
+
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="220dp"
+                        android:layout_marginTop="12dp"
+                        android:orientation="horizontal">
+
+                        <LinearLayout
+                            android:id="@+id/stageFlagBox"
+                            android:layout_width="0dp"
+                            android:layout_height="match_parent"
+                            android:layout_marginEnd="6dp"
+                            android:layout_weight="1"
+                            android:background="#10200c"
+                            android:gravity="center"
+                            android:orientation="vertical"
+                            android:padding="12dp">
+
+                            <TextView
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:text="STAGE STATUS"
+                                android:textAllCaps="true"
+                                android:textColor="@color/muted"
+                                android:textSize="14sp" />
+
+                            <TextView
+                                android:id="@+id/stageFlag"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:layout_marginTop="8dp"
+                                android:gravity="center"
+                                android:text="GREEN FLAG"
+                                android:textAllCaps="true"
+                                android:textColor="@color/go"
+                                android:textSize="32sp"
+                                android:textStyle="bold" />
+                        </LinearLayout>
+
+                        <LinearLayout
+                            android:layout_width="0dp"
+                            android:layout_height="match_parent"
+                            android:layout_marginStart="6dp"
+                            android:layout_weight="1"
+                            android:orientation="vertical">
+
+                            <FrameLayout
+                                android:id="@+id/okHoldWrap"
+                                android:layout_width="match_parent"
+                                android:layout_height="0dp"
+                                android:layout_marginBottom="6dp"
+                                android:layout_weight="1"
+                                android:clickable="true"
+                                android:focusable="true">
+
+                                <com.google.android.material.button.MaterialButton
+                                    android:id="@+id/okBtn"
+                                    android:layout_width="match_parent"
+                                    android:layout_height="match_parent"
+                                    android:backgroundTint="@color/go"
+                                    android:clickable="false"
+                                    android:focusable="false"
+                                    android:maxLines="3"
+                                    android:text="OK\nHold 3s"
+                                    android:textColor="@color/black"
+                                    android:textSize="22sp"
+                                    android:textStyle="bold"
+                                    app:cornerRadius="0dp" />
+
+                                <View
+                                    android:id="@+id/okHoldFill"
+                                    android:layout_width="match_parent"
+                                    android:layout_height="match_parent"
+                                    android:background="#55FFFFFF"
+                                    android:clickable="false"
+                                    android:focusable="false"
+                                    android:scaleX="0"
+                                    android:transformPivotX="0dp" />
+                            </FrameLayout>
+
+                            <FrameLayout
+                                android:id="@+id/sosHoldWrap"
+                                android:layout_width="match_parent"
+                                android:layout_height="0dp"
+                                android:layout_marginTop="6dp"
+                                android:layout_weight="1"
+                                android:clickable="true"
+                                android:focusable="true">
+
+                                <com.google.android.material.button.MaterialButton
+                                    android:id="@+id/sosBtn"
+                                    android:layout_width="match_parent"
+                                    android:layout_height="match_parent"
+                                    android:backgroundTint="@color/stop"
+                                    android:clickable="false"
+                                    android:focusable="false"
+                                    android:maxLines="3"
+                                    android:text="SOS\nHold 3s"
+                                    android:textColor="@android:color/white"
+                                    android:textSize="22sp"
+                                    android:textStyle="bold"
+                                    app:cornerRadius="0dp" />
+
+                                <View
+                                    android:id="@+id/sosHoldFill"
+                                    android:layout_width="match_parent"
+                                    android:layout_height="match_parent"
+                                    android:background="#55FFFFFF"
+                                    android:clickable="false"
+                                    android:focusable="false"
+                                    android:scaleX="0"
+                                    android:transformPivotX="0dp" />
+                            </FrameLayout>
+                        </LinearLayout>
+                    </LinearLayout>
+
+                    <LinearLayout
+                        android:id="@+id/crewStatusBanner"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="12dp"
+                        android:gravity="center"
+                        android:orientation="vertical"
+                        android:padding="12dp"
+                        android:visibility="gone">
+
+                        <TextView
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:gravity="center"
+                            android:letterSpacing="0.12"
+                            android:text="YOU CONFIRMED"
                             android:textAllCaps="true"
                             android:textColor="@color/muted"
                             android:textSize="14sp" />
 
                         <TextView
-                            android:id="@+id/stageFlag"
-                            android:layout_width="wrap_content"
+                            android:id="@+id/crewStatusRead"
+                            android:layout_width="match_parent"
                             android:layout_height="wrap_content"
-                            android:layout_marginTop="8dp"
                             android:gravity="center"
-                            android:text="GREEN FLAG"
+                            android:text="GREEN OK"
                             android:textAllCaps="true"
-                            android:textColor="@color/go"
-                            android:textSize="32sp"
+                            android:textSize="34sp"
                             android:textStyle="bold" />
+
+                        <TextView
+                            android:id="@+id/crewStatusHint"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:gravity="center"
+                            android:paddingTop="4dp"
+                            android:text="Hold the other button 3 seconds to change."
+                            android:textAllCaps="true"
+                            android:textColor="@color/ink"
+                            android:textSize="16sp" />
                     </LinearLayout>
 
-                    <LinearLayout
-                        android:layout_width="0dp"
-                        android:layout_height="match_parent"
-                        android:layout_marginStart="6dp"
-                        android:layout_weight="1"
-                        android:orientation="vertical">
+                    <TextView
+                        android:id="@+id/stageSpeed"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="12dp"
+                        android:gravity="center"
+                        android:text="—"
+                        android:textColor="@color/ink"
+                        android:textSize="22sp" />
 
-                        <FrameLayout
-                            android:id="@+id/okHoldWrap"
-                            android:layout_width="match_parent"
-                            android:layout_height="0dp"
-                            android:layout_marginBottom="6dp"
-                            android:layout_weight="1"
-                            android:clickable="true"
-                            android:focusable="true">
-
-                            <com.google.android.material.button.MaterialButton
-                                android:id="@+id/okBtn"
-                                android:layout_width="match_parent"
-                                android:layout_height="match_parent"
-                                android:backgroundTint="@color/go"
-                                android:clickable="false"
-                                android:focusable="false"
-                                android:maxLines="3"
-                                android:text="OK\nHold 3s"
-                                android:textColor="@color/black"
-                                android:textSize="22sp"
-                                android:textStyle="bold"
-                                app:cornerRadius="0dp" />
-
-                            <View
-                                android:id="@+id/okHoldFill"
-                                android:layout_width="match_parent"
-                                android:layout_height="match_parent"
-                                android:background="#55FFFFFF"
-                                android:clickable="false"
-                                android:focusable="false"
-                                android:scaleX="0"
-                                android:transformPivotX="0dp" />
-                        </FrameLayout>
-
-                        <FrameLayout
-                            android:id="@+id/sosHoldWrap"
-                            android:layout_width="match_parent"
-                            android:layout_height="0dp"
-                            android:layout_marginTop="6dp"
-                            android:layout_weight="1"
-                            android:clickable="true"
-                            android:focusable="true">
-
-                            <com.google.android.material.button.MaterialButton
-                                android:id="@+id/sosBtn"
-                                android:layout_width="match_parent"
-                                android:layout_height="match_parent"
-                                android:backgroundTint="@color/stop"
-                                android:clickable="false"
-                                android:focusable="false"
-                                android:maxLines="3"
-                                android:text="SOS\nHold 3s"
-                                android:textColor="@android:color/white"
-                                android:textSize="22sp"
-                                android:textStyle="bold"
-                                app:cornerRadius="0dp" />
-
-                            <View
-                                android:id="@+id/sosHoldFill"
-                                android:layout_width="match_parent"
-                                android:layout_height="match_parent"
-                                android:background="#55FFFFFF"
-                                android:clickable="false"
-                                android:focusable="false"
-                                android:scaleX="0"
-                                android:transformPivotX="0dp" />
-                        </FrameLayout>
-                    </LinearLayout>
+                    <TextView
+                        android:id="@+id/stageLockNote"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="8dp"
+                        android:gravity="center"
+                        android:text="@string/stage_lock_note"
+                        android:textColor="@color/amber"
+                        android:textSize="14sp"
+                        android:visibility="gone" />
                 </LinearLayout>
 
                 <LinearLayout
-                    android:id="@+id/crewStatusBanner"
+                    android:id="@+id/crewAlert"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:layout_marginTop="12dp"
-                    android:gravity="center"
+                    android:background="@color/bg"
                     android:orientation="vertical"
                     android:padding="12dp"
                     android:visibility="gone">
@@ -513,209 +536,135 @@
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
                         android:gravity="center"
-                        android:letterSpacing="0.12"
-                        android:text="YOU CONFIRMED"
+                        android:padding="12dp"
+                        android:text="STOPPED ON STAGE"
                         android:textAllCaps="true"
-                        android:textColor="@color/muted"
-                        android:textSize="14sp" />
-
-                    <TextView
-                        android:id="@+id/crewStatusRead"
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:gravity="center"
-                        android:text="GREEN OK"
-                        android:textAllCaps="true"
-                        android:textSize="34sp"
+                        android:textColor="@color/amber"
+                        android:textSize="26sp"
                         android:textStyle="bold" />
 
                     <TextView
-                        android:id="@+id/crewStatusHint"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
                         android:gravity="center"
-                        android:paddingTop="4dp"
-                        android:text="Hold the other button 3 seconds to change."
-                        android:textAllCaps="true"
+                        android:paddingBottom="16dp"
+                        android:text="If you had an off or accident, confirm both crew are OK. Hold GREEN OK or RED SOS for 3 seconds."
                         android:textColor="@color/ink"
-                        android:textSize="16sp" />
+                        android:textSize="18sp" />
+
+                    <FrameLayout
+                        android:id="@+id/alertOkHoldWrap"
+                        android:layout_width="match_parent"
+                        android:layout_height="120dp"
+                        android:layout_marginBottom="10dp"
+                        android:clickable="true"
+                        android:focusable="true">
+
+                        <com.google.android.material.button.MaterialButton
+                            android:id="@+id/alertOkBtn"
+                            android:layout_width="match_parent"
+                            android:layout_height="match_parent"
+                            android:backgroundTint="@color/go"
+                            android:clickable="false"
+                            android:focusable="false"
+                            android:maxLines="3"
+                            android:text="GREEN OK\nHold 3s · Both crew OK"
+                            android:textColor="@color/black"
+                            android:textSize="24sp"
+                            android:textStyle="bold"
+                            app:cornerRadius="0dp" />
+
+                        <View
+                            android:id="@+id/alertOkHoldFill"
+                            android:layout_width="match_parent"
+                            android:layout_height="match_parent"
+                            android:background="#55FFFFFF"
+                            android:clickable="false"
+                            android:focusable="false"
+                            android:scaleX="0"
+                            android:transformPivotX="0dp" />
+                    </FrameLayout>
+
+                    <FrameLayout
+                        android:id="@+id/alertSosHoldWrap"
+                        android:layout_width="match_parent"
+                        android:layout_height="120dp"
+                        android:clickable="true"
+                        android:focusable="true">
+
+                        <com.google.android.material.button.MaterialButton
+                            android:id="@+id/alertSosBtn"
+                            android:layout_width="match_parent"
+                            android:layout_height="match_parent"
+                            android:backgroundTint="@color/stop"
+                            android:clickable="false"
+                            android:focusable="false"
+                            android:maxLines="3"
+                            android:text="RED SOS\nHold 3s · Need help"
+                            android:textColor="@android:color/white"
+                            android:textSize="24sp"
+                            android:textStyle="bold"
+                            app:cornerRadius="0dp" />
+
+                        <View
+                            android:id="@+id/alertSosHoldFill"
+                            android:layout_width="match_parent"
+                            android:layout_height="match_parent"
+                            android:background="#55FFFFFF"
+                            android:clickable="false"
+                            android:focusable="false"
+                            android:scaleX="0"
+                            android:transformPivotX="0dp" />
+                    </FrameLayout>
                 </LinearLayout>
+            </FrameLayout>
+        </LinearLayout>
+    </ScrollView>
 
-                <TextView
-                    android:id="@+id/stageSpeed"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="12dp"
-                    android:gravity="center"
-                    android:text="—"
-                    android:textColor="@color/ink"
-                    android:textSize="22sp" />
+    <LinearLayout
+        android:id="@+id/redFlagAlert"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:background="#C80000"
+        android:clickable="true"
+        android:elevation="24dp"
+        android:focusable="true"
+        android:gravity="center"
+        android:orientation="vertical"
+        android:padding="20dp"
+        android:visibility="gone">
 
-                <TextView
-                    android:id="@+id/stageLockNote"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="8dp"
-                    android:gravity="center"
-                    android:text="@string/stage_lock_note"
-                    android:textColor="@color/amber"
-                    android:textSize="14sp"
-                    android:visibility="gone" />
+        <TextView
+            android:id="@+id/redFlagTitle"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:gravity="center"
+            android:text="RED FLAG"
+            android:textAllCaps="true"
+            android:textColor="@android:color/white"
+            android:textSize="64sp"
+            android:textStyle="bold" />
 
-                <com.google.android.material.button.MaterialButton
-                    android:id="@+id/stageStopBtn"
-                    android:layout_width="match_parent"
-                    android:layout_height="56dp"
-                    android:layout_marginTop="12dp"
-                    android:backgroundTint="@color/stop"
-                    android:text="@string/stop_tracking"
-                    android:textColor="@android:color/white"
-                    android:textStyle="bold"
-                    app:cornerRadius="0dp" />
-            </LinearLayout>
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="16dp"
+            android:gravity="center"
+            android:text="Stage stopped. Confirm the crew has seen this red flag."
+            android:textColor="@android:color/white"
+            android:textSize="20sp" />
 
-            <LinearLayout
-                android:id="@+id/crewAlert"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:background="#10110F"
-                android:orientation="vertical"
-                android:padding="12dp"
-                android:visibility="gone">
-
-                <TextView
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:gravity="center"
-                    android:padding="12dp"
-                    android:text="STOPPED ON STAGE"
-                    android:textAllCaps="true"
-                    android:textColor="@color/amber"
-                    android:textSize="26sp"
-                    android:textStyle="bold" />
-
-                <TextView
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:gravity="center"
-                    android:paddingBottom="16dp"
-                    android:text="If you had an off or accident, confirm both crew are OK. Hold GREEN OK or RED SOS for 3 seconds."
-                    android:textColor="@color/ink"
-                    android:textSize="18sp" />
-
-                <FrameLayout
-                    android:id="@+id/alertOkHoldWrap"
-                    android:layout_width="match_parent"
-                    android:layout_height="120dp"
-                    android:layout_marginBottom="10dp"
-                    android:clickable="true"
-                    android:focusable="true">
-
-                    <com.google.android.material.button.MaterialButton
-                        android:id="@+id/alertOkBtn"
-                        android:layout_width="match_parent"
-                        android:layout_height="match_parent"
-                        android:backgroundTint="@color/go"
-                        android:clickable="false"
-                        android:focusable="false"
-                        android:maxLines="3"
-                        android:text="GREEN OK\nHold 3s · Both crew OK"
-                        android:textColor="@color/black"
-                        android:textSize="24sp"
-                        android:textStyle="bold"
-                        app:cornerRadius="0dp" />
-
-                    <View
-                        android:id="@+id/alertOkHoldFill"
-                        android:layout_width="match_parent"
-                        android:layout_height="match_parent"
-                        android:background="#55FFFFFF"
-                        android:clickable="false"
-                        android:focusable="false"
-                        android:scaleX="0"
-                        android:transformPivotX="0dp" />
-                </FrameLayout>
-
-                <FrameLayout
-                    android:id="@+id/alertSosHoldWrap"
-                    android:layout_width="match_parent"
-                    android:layout_height="120dp"
-                    android:clickable="true"
-                    android:focusable="true">
-
-                    <com.google.android.material.button.MaterialButton
-                        android:id="@+id/alertSosBtn"
-                        android:layout_width="match_parent"
-                        android:layout_height="match_parent"
-                        android:backgroundTint="@color/stop"
-                        android:clickable="false"
-                        android:focusable="false"
-                        android:maxLines="3"
-                        android:text="RED SOS\nHold 3s · Need help"
-                        android:textColor="@android:color/white"
-                        android:textSize="24sp"
-                        android:textStyle="bold"
-                        app:cornerRadius="0dp" />
-
-                    <View
-                        android:id="@+id/alertSosHoldFill"
-                        android:layout_width="match_parent"
-                        android:layout_height="match_parent"
-                        android:background="#55FFFFFF"
-                        android:clickable="false"
-                        android:focusable="false"
-                        android:scaleX="0"
-                        android:transformPivotX="0dp" />
-                </FrameLayout>
-            </LinearLayout>
-        </FrameLayout>
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/redFlagOkBtn"
+            android:layout_width="match_parent"
+            android:layout_height="120dp"
+            android:layout_marginTop="24dp"
+            android:backgroundTint="@color/amber"
+            android:maxLines="2"
+            android:text="OK / CONFIRMED"
+            android:textColor="@color/black"
+            android:textSize="28sp"
+            android:textStyle="bold"
+            app:cornerRadius="0dp" />
     </LinearLayout>
-</ScrollView>
-
-            <LinearLayout
-                android:id="@+id/redFlagAlert"
-                android:layout_width="match_parent"
-                android:layout_height="match_parent"
-                android:background="#C80000"
-                android:clickable="true"
-                android:elevation="24dp"
-                android:focusable="true"
-                android:gravity="center"
-                android:orientation="vertical"
-                android:padding="20dp"
-                android:visibility="gone">
-
-                <TextView
-                    android:id="@+id/redFlagTitle"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:gravity="center"
-                    android:text="RED FLAG"
-                    android:textAllCaps="true"
-                    android:textColor="@android:color/white"
-                    android:textSize="64sp"
-                    android:textStyle="bold" />
-
-                <TextView
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="16dp"
-                    android:gravity="center"
-                    android:text="Stage stopped. Confirm the crew has seen this red flag."
-                    android:textColor="@android:color/white"
-                    android:textSize="20sp" />
-
-                <com.google.android.material.button.MaterialButton
-                    android:id="@+id/redFlagOkBtn"
-                    android:layout_width="match_parent"
-                    android:layout_height="120dp"
-                    android:layout_marginTop="24dp"
-                    android:backgroundTint="@color/amber"
-                    android:maxLines="2"
-                    android:text="OK / CONFIRMED"
-                    android:textColor="@color/black"
-                    android:textSize="28sp"
-                    android:textStyle="bold"
-                    app:cornerRadius="0dp" />
-            </LinearLayout>
 </FrameLayout>

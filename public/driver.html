@@ -10,18 +10,17 @@
   <title>Driver · Rally GPS</title>
   <link rel="manifest" href="/manifest.json" />
   <link rel="icon" href="/icons/icon.svg" type="image/svg+xml" />
-  <link rel="stylesheet" href="/css/app.css?v=stoplock2" />
+  <link rel="stylesheet" href="/css/app.css?v=nobanner1" />
 </head>
 <body class="driver-body">
   <div class="tape" aria-hidden="true"></div>
+  <button id="settingsBtnFloat" type="button" class="settings-gear settings-gear-float" aria-label="Settings" title="Settings">⚙</button>
   <main class="driver-shell">
     <header class="driver-top">
       <a id="driverHome" class="back" href="/">Rally GPS</a>
+      <button id="settingsBtn" type="button" class="settings-gear" aria-label="Settings" title="Settings">⚙</button>
       <p id="secureNote" class="secure-note hidden"></p>
     </header>
-    <p id="bgTrackNote" class="bg-track-note hidden" role="status"></p>
-    <p id="lockNote" class="lock-note hidden">Tracking is locked. Keep this screen open. Stop tracking needs the organiser code. Red flag, OK, and SOS still work.</p>
-
     <section id="setupPanel" class="panel">
       <p class="eyebrow">Door plate</p>
       <h1>Join the rally</h1>
@@ -55,7 +54,7 @@
         <strong id="roadSectionRead">Start tracking</strong>
       </div>
 
-      <dl class="telemetry">
+      <dl class="telemetry telemetry-simple">
         <div>
           <dt>Speed</dt>
           <dd id="speedRead">—</dd>
@@ -64,17 +63,8 @@
           <dt>GPS</dt>
           <dd id="accRead">—</dd>
         </div>
-        <div>
-          <dt>Heading</dt>
-          <dd id="headRead">—</dd>
-        </div>
-        <div>
-          <dt>Fix</dt>
-          <dd id="fixRead">—</dd>
-        </div>
       </dl>
 
-      <p id="coordRead" class="coords">Waiting for GPS</p>
       <p id="errorRead" class="error hidden"></p>
 
       <button id="toggleBtn" type="button" class="btn btn-start">Start tracking</button>
@@ -110,7 +100,6 @@
         <p id="crewStatusHint">Hold the other button 3 seconds to change.</p>
       </div>
       <p id="stageSpeed" class="coords">—</p>
-      <button id="stageStopBtn" type="button" class="btn btn-stop">Stop tracking</button>
     </section>
 
     <section id="crewAlert" class="crew-alert hidden">
@@ -153,7 +142,22 @@
         </div>
       </form>
     </div>
+    <div id="settingsSheet" class="flag-modal settings-sheet hidden" role="dialog" aria-modal="true" aria-labelledby="settingsTitle" hidden>
+      <div class="flag-modal-card">
+        <h2 id="settingsTitle">Settings</h2>
+        <p class="hint">Theme</p>
+        <div class="theme-row" role="radiogroup" aria-label="Theme">
+          <label><input type="radio" name="driverTheme" id="themeDark" value="dark" /> Dark</label>
+          <label><input type="radio" name="driverTheme" id="themeLight" value="light" /> Light</label>
+        </div>
+        <div class="flag-modal-actions settings-actions">
+          <button id="settingsChangeCar" type="button" class="btn btn-ghost">Change car</button>
+          <button id="settingsStopBtn" type="button" class="btn btn-stop btn-stop-small">Stop tracking</button>
+          <button id="settingsClose" type="button" class="btn btn-ghost">Close</button>
+        </div>
+      </div>
+    </div>
   </main>
-  <script src="/js/driver.js?v=stoplock2"></script>
+  <script src="/js/driver.js?v=nobanner1"></script>
 </body>
 </html>

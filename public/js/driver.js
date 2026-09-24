@@ -14,6 +14,7 @@ const secureNote = document.getElementById("secureNote");
 const KEY = "rallyGpsSession";
 const QUEUE_KEY = "rallyGpsQueue";
 const TRACKING_KEY = "rallyGpsTracking";
+const THEME_KEY = "rallyGpsTheme";
 const STOPPED_SPEED_MPS = 1.2;
 const STOPPED_ALERT_MS = 20_000;
 const MAX_QUEUE = 2000;
@@ -67,6 +68,7 @@ let flagSoundWanted = false;
 let flagSoundRetryBound = false;
 let crewStatusSent = null;
 let activeHold = null;
+let pendingAfterStop = null;
 
 if (!TEST_MODE && !window.isSecureContext && secureNote) {
   secureNote.textContent =
@@ -118,12 +120,75 @@ joinForm?.addEventListener("submit", async (event) => {
 
 toggleBtn?.addEventListener("click", () => {
   if (TEST_MODE) return;
-  if (tracking) requestStopTracking();
-  else startTracking();
+  if (!tracking) startTracking();
 });
-document.getElementById("stageStopBtn")?.addEventListener("click", () => {
+
+function applyTheme(theme) {
+  const mode = theme === "light" ? "light" : "dark";
+  document.documentElement.setAttribute("data-theme", mode);
+  try {
+    localStorage.setItem(THEME_KEY, mode);
+  } catch {
+    /* private mode */
+  }
+  const meta = document.querySelector('meta[name="theme-color"]');
+  if (meta) meta.content = mode === "light" ? "#f4f0e6" : "#10110f";
+  const dark = document.getElementById("themeDark");
+  const light = document.getElementById("themeLight");
+  if (dark) dark.checked = mode === "dark";
+  if (light) light.checked = mode === "light";
+}
+
+applyTheme((() => {
+  try {
+    return localStorage.getItem(THEME_KEY) || "dark";
+  } catch {
+    return "dark";
+  }
+})());
+
+function openSettingsSheet() {
+  if (TEST_MODE || safetyAlertOpen()) return;
+  const sheet = document.getElementById("settingsSheet");
+  if (!sheet) return;
+  const stopBtn = document.getElementById("settingsStopBtn");
+  if (stopBtn) stopBtn.classList.toggle("hidden", !tracking);
+  sheet.hidden = false;
+  sheet.classList.remove("hidden");
+}
+
+function closeSettingsSheet() {
+  const sheet = document.getElementById("settingsSheet");
+  if (!sheet) return;
+  sheet.hidden = true;
+  sheet.classList.add("hidden");
+}
+
+document.getElementById("settingsBtn")?.addEventListener("click", openSettingsSheet);
+document.getElementById("settingsBtnFloat")?.addEventListener("click", openSettingsSheet);
+document.getElementById("settingsClose")?.addEventListener("click", closeSettingsSheet);
+document.getElementById("themeDark")?.addEventListener("change", () => applyTheme("dark"));
+document.getElementById("themeLight")?.addEventListener("change", () => applyTheme("light"));
+document.getElementById("settingsStopBtn")?.addEventListener("click", () => {
   if (TEST_MODE) return;
+  closeSettingsSheet();
   requestStopTracking();
+});
+document.getElementById("settingsChangeCar")?.addEventListener("click", () => {
+  if (TEST_MODE) return;
+  closeSettingsSheet();
+  const leave = () => {
+    localStorage.removeItem(KEY);
+    session = null;
+    setTrackingWanted(false);
+    location.reload();
+  };
+  if (tracking) {
+    pendingAfterStop = leave;
+    requestStopTracking();
+  } else {
+    leave();
+  }
 });
 document.getElementById("driverHome")?.addEventListener("click", (event) => {
   if (TEST_MODE || !tracking || !stopLikelyLocked()) return;
@@ -135,6 +200,7 @@ document.getElementById("stopLockForm")?.addEventListener("submit", (event) => {
   confirmStopCode();
 });
 document.getElementById("stopLockCancel")?.addEventListener("click", () => {
+  pendingAfterStop = null;
   closeStopLockDialog();
 });
 
@@ -594,8 +660,11 @@ async function startTracking() {
   bgFixesWhileHidden = 0;
   syncLockChrome();
   setTrackingWanted(true);
-  toggleBtn.textContent = "Stop tracking";
-  toggleBtn.className = "btn btn-stop";
+  if (toggleBtn) {
+    toggleBtn.classList.add("hidden");
+    toggleBtn.textContent = "Start tracking";
+    toggleBtn.className = "btn btn-start hidden";
+  }
   setLiveLamp();
   updateRoadSectionUi();
   updateBgNote();
@@ -655,8 +724,6 @@ function syncLockChrome() {
   const trackingOn = Boolean(!TEST_MODE && tracking);
   const locked = trackingOn && stopLikelyLocked();
   document.getElementById("driverHome")?.classList.toggle("hidden", locked);
-  const note = document.getElementById("lockNote");
-  if (note) note.classList.toggle("hidden", !(trackingOn && stopLock === true) || safetyAlertOpen());
 }
 
 function armExitGuard() {
@@ -809,12 +876,16 @@ async function applyLocalStop() {
   clearTrackingNotification();
   toggleBtn.textContent = "Start tracking";
   toggleBtn.className = "btn btn-start";
+  if (toggleBtn) toggleBtn.classList.remove("hidden");
   setLamp("lamp-idle", "STOPPED", "Tracking is off. Tap start when you are ready.");
   exitGuardArmed = false;
   closeStopLockDialog();
   syncLockChrome();
   updateBgNote();
   renderMode();
+  const after = pendingAfterStop;
+  pendingAfterStop = null;
+  after?.();
 }
 
 async function stopTracking() {
@@ -906,17 +977,13 @@ async function resumeForegroundTracking() {
 async function onFix(pos) {
   if (document.hidden) bgFixesWhileHidden += 1;
   lastFix = pos;
-  const { latitude: lat, longitude: lon, heading, speed, accuracy } = pos.coords;
+  const { speed, accuracy } = pos.coords;
   const speedText =
     speed == null || Number.isNaN(speed) ? "—" : `${Math.round(speed * 3.6)} km/h`;
   document.getElementById("speedRead").textContent = speedText;
   document.getElementById("stageSpeed").textContent = `Speed ${speedText}`;
   document.getElementById("accRead").textContent =
     accuracy == null ? "—" : `±${Math.round(accuracy)} m`;
-  document.getElementById("headRead").textContent =
-    heading == null || Number.isNaN(heading) ? "—" : `${Math.round(heading)}°`;
-  document.getElementById("fixRead").textContent = new Date().toLocaleTimeString();
-  document.getElementById("coordRead").textContent = `${lat.toFixed(6)}, ${lon.toFixed(6)}`;
 
   enqueueFix(pos);
   const result = await flushQueue();
@@ -1175,35 +1242,8 @@ function setLiveLamp() {
   );
 }
 
-function bgNoteText() {
-  const { iOS, android } = trackingPlatform();
-  if (iOS) {
-    return "Keep this screen on. iPhone Safari cannot do true background GPS.";
-  }
-  if (document.hidden && bgFixesWhileHidden > 0) {
-    return "Background tracking is on. GPS is still sending.";
-  }
-  if (android) {
-    return "Keep this screen on, or tracking may pause on some phones. Lock-screen GPS needs the Rally GPS Android app.";
-  }
-  return "Keep this screen on, or tracking may pause on some phones.";
-}
-
 function updateBgNote() {
   syncLockChrome();
-  const el = document.getElementById("bgTrackNote");
-  if (!el) return;
-  const alertsUp =
-    !crewAlert.classList.contains("hidden") || !redFlagAlert.classList.contains("hidden");
-  if (TEST_MODE || !tracking || !session || alertsUp || !setupPanel?.classList.contains("hidden")) {
-    el.classList.add("hidden");
-    el.classList.remove("ok");
-    return;
-  }
-  const { iOS } = trackingPlatform();
-  el.classList.remove("hidden");
-  el.classList.toggle("ok", !iOS && document.hidden && bgFixesWhileHidden > 0);
-  el.textContent = bgNoteText();
 }
 
 function trackingNotificationBody() {

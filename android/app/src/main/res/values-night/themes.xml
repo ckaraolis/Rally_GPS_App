@@ -9,18 +9,6 @@
         <item name="android:navigationBarColor">@color/bg</item>
         <item name="android:windowBackground">@color/bg</item>
         <item name="android:textColor">@color/ink</item>
-        <item name="android:windowLightStatusBar">true</item>
-    </style>
-
-    <style name="RallyLabel">
-        <item name="android:textAllCaps">true</item>
-        <item name="android:textColor">@color/muted</item>
-        <item name="android:textSize">12sp</item>
-        <item name="android:letterSpacing">0.12</item>
-    </style>
-
-    <style name="RallyInput" parent="Widget.MaterialComponents.TextInputLayout.OutlinedBox">
-        <item name="boxStrokeColor">@color/line</item>
-        <item name="hintTextColor">@color/muted</item>
+        <item name="android:windowLightStatusBar">false</item>
     </style>
 </resources>

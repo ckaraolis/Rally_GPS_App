@@ -9,6 +9,10 @@ object SessionStore {
     private const val KEY_TRACKING = "trackingWanted"
     private const val KEY_STOP_LOCK_KNOWN = "stopLockKnown"
     private const val KEY_STOP_LOCK = "stopLock"
+    private const val KEY_THEME = "themeMode"
+
+    const val THEME_DARK = "dark"
+    const val THEME_LIGHT = "light"
 
     fun save(context: Context, session: Session) {
         val json = JSONObject()
@@ -103,4 +107,20 @@ object SessionStore {
             .getString("serverUrl", "https://rallygpsapp.vercel.app")
             ?: "https://rallygpsapp.vercel.app"
     }
+
+    fun saveTheme(context: Context, theme: String) {
+        val mode = if (theme == THEME_LIGHT) THEME_LIGHT else THEME_DARK
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .edit()
+            .putString(KEY_THEME, mode)
+            .apply()
+    }
+
+    fun loadTheme(context: Context): String {
+        return context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .getString(KEY_THEME, THEME_DARK)
+            ?: THEME_DARK
+    }
+
+    fun isDarkTheme(context: Context): Boolean = loadTheme(context) != THEME_LIGHT
 }

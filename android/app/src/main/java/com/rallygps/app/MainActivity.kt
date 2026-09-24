@@ -20,19 +20,24 @@ import android.provider.Settings
 import android.text.InputFilter
 import android.text.InputType
 import android.text.method.PasswordTransformationMethod
+import android.view.LayoutInflater
 import android.view.MotionEvent
 import android.view.View
 import android.widget.EditText
+import android.widget.RadioButton
+import android.widget.RadioGroup
 import android.widget.Toast
 import androidx.activity.OnBackPressedCallback
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
+import com.google.android.material.bottomsheet.BottomSheetDialog
+import com.google.android.material.button.MaterialButton
 import com.rallygps.app.databinding.ActivityMainBinding
-import java.text.SimpleDateFormat
-import java.util.Date
-import java.util.Locale
 import java.util.concurrent.Executors
 
 class MainActivity : AppCompatActivity() {
@@ -62,13 +67,22 @@ class MainActivity : AppCompatActivity() {
     private var holdHintTick: Runnable? = null
     private var stopLock: Boolean? = null
     private var stopDialog: AlertDialog? = null
+    private var settingsSheet: BottomSheetDialog? = null
     private var pendingAfterStop: (() -> Unit)? = null
+    private val baseContentPadLeft = 20
+    private val baseContentPadTop = 16
+    private val baseContentPadRight = 20
+    private val baseContentPadBottom = 24
 
     private val backCallback = object : OnBackPressedCallback(true) {
         override fun handleOnBackPressed() {
             if (stopDialog?.isShowing == true) {
                 pendingAfterStop = null
                 stopDialog?.dismiss()
+                return
+            }
+            if (settingsSheet?.isShowing == true) {
+                settingsSheet?.dismiss()
                 return
             }
             val active = tracking || TrackingService.isActive
@@ -188,13 +202,13 @@ class MainActivity : AppCompatActivity() {
 
             renderMode()
 
-            if (!intent.hasExtra(TrackingActions.EXTRA_LAT)) return
+            if (!intent.hasExtra(TrackingActions.EXTRA_LAT) &&
+                !intent.hasExtra(TrackingActions.EXTRA_SPEED) &&
+                !intent.hasExtra(TrackingActions.EXTRA_ACCURACY)
+            ) {
+                return
+            }
 
-            val lat = intent.getDoubleExtra(TrackingActions.EXTRA_LAT, 0.0)
-            val lon = intent.getDoubleExtra(TrackingActions.EXTRA_LON, 0.0)
-            val heading = if (intent.hasExtra(TrackingActions.EXTRA_HEADING)) {
-                intent.getFloatExtra(TrackingActions.EXTRA_HEADING, 0f)
-            } else null
             val accuracy = if (intent.hasExtra(TrackingActions.EXTRA_ACCURACY)) {
                 intent.getFloatExtra(TrackingActions.EXTRA_ACCURACY, 0f)
             } else null
@@ -203,16 +217,15 @@ class MainActivity : AppCompatActivity() {
             binding.speedRead.text = speedText
             binding.stageSpeed.text = "Speed $speedText"
             binding.accRead.text = accuracy?.let { "±${it.toInt()} m" } ?: "—"
-            binding.headRead.text = heading?.let { "${it.toInt()}°" } ?: "—"
-            binding.fixRead.text = SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(Date())
-            binding.coordRead.text = String.format(Locale.US, "%.6f, %.6f", lat, lon)
         }
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        ThemeHelper.applyFromStore(this)
         super.onCreate(savedInstanceState)
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
+        applySafeInsets()
 
         binding.serverUrl.setText(SessionStore.loadServerUrl(this))
         session = SessionStore.load(this)
@@ -229,23 +242,8 @@ class MainActivity : AppCompatActivity() {
 
         onBackPressedDispatcher.addCallback(this, backCallback)
         binding.continueBtn.setOnClickListener { joinRally() }
-        binding.toggleBtn.setOnClickListener {
-            if (tracking) requestStopTracking() else ensurePermissionsAndStart()
-        }
-        binding.stageStopBtn.setOnClickListener { requestStopTracking() }
-        binding.changeCarBtn.setOnClickListener {
-            if (tracking || TrackingService.isActive) {
-                requestStopTracking {
-                    SessionStore.clear(this)
-                    session = null
-                    showSetupPanel()
-                }
-            } else {
-                SessionStore.clear(this)
-                session = null
-                showSetupPanel()
-            }
-        }
+        binding.toggleBtn.setOnClickListener { ensurePermissionsAndStart() }
+        binding.settingsBtn.setOnClickListener { showSettingsSheet() }
 
         bindHold(binding.okHoldWrap, binding.okHoldFill, "ok")
         bindHold(binding.sosHoldWrap, binding.sosHoldFill, "sos")
@@ -258,6 +256,87 @@ class MainActivity : AppCompatActivity() {
             hideRedFlagAlert()
             sendFlagAck()
             renderMode()
+        }
+    }
+
+    private fun applySafeInsets() {
+        WindowCompat.setDecorFitsSystemWindows(window, false)
+        val density = resources.displayMetrics.density
+        val baseL = (baseContentPadLeft * density).toInt()
+        val baseT = (baseContentPadTop * density).toInt()
+        val baseR = (baseContentPadRight * density).toInt()
+        val baseB = (baseContentPadBottom * density).toInt()
+        ViewCompat.setOnApplyWindowInsetsListener(binding.rootFrame) { _, insets ->
+            val bars = insets.getInsets(
+                WindowInsetsCompat.Type.systemBars() or WindowInsetsCompat.Type.displayCutout()
+            )
+            binding.contentScroll.setPadding(
+                baseL + bars.left,
+                baseT + bars.top,
+                baseR + bars.right,
+                baseB + bars.bottom
+            )
+            binding.redFlagAlert.setPadding(
+                baseL + bars.left,
+                baseT + bars.top,
+                baseR + bars.right,
+                baseB + bars.bottom
+            )
+            insets
+        }
+        ViewCompat.requestApplyInsets(binding.rootFrame)
+    }
+
+    private fun showSettingsSheet() {
+        if (shouldShowRedFlag() || crewAlertVisible) return
+        settingsSheet?.dismiss()
+        val sheet = BottomSheetDialog(this)
+        val view = LayoutInflater.from(this).inflate(R.layout.sheet_settings, null)
+        val themeGroup = view.findViewById<RadioGroup>(R.id.themeGroup)
+        val themeDark = view.findViewById<RadioButton>(R.id.themeDark)
+        val themeLight = view.findViewById<RadioButton>(R.id.themeLight)
+        val changeCarBtn = view.findViewById<MaterialButton>(R.id.settingsChangeCarBtn)
+        val stopBtn = view.findViewById<MaterialButton>(R.id.settingsStopBtn)
+
+        if (SessionStore.isDarkTheme(this)) themeDark.isChecked = true else themeLight.isChecked = true
+
+        themeGroup.setOnCheckedChangeListener { _, checkedId ->
+            val wantDark = checkedId == R.id.themeDark
+            if (wantDark == SessionStore.isDarkTheme(this)) return@setOnCheckedChangeListener
+            sheet.dismiss()
+            ThemeHelper.setTheme(this, wantDark)
+        }
+
+        val active = tracking || TrackingService.isActive
+        stopBtn.visibility = if (active) View.VISIBLE else View.GONE
+        stopBtn.setOnClickListener {
+            sheet.dismiss()
+            requestStopTracking()
+        }
+        changeCarBtn.setOnClickListener {
+            sheet.dismiss()
+            changeCarOrServer()
+        }
+
+        sheet.setContentView(view)
+        sheet.setOnDismissListener {
+            if (settingsSheet === sheet) settingsSheet = null
+        }
+        settingsSheet = sheet
+        sheet.show()
+    }
+
+    private fun changeCarOrServer() {
+        if (tracking || TrackingService.isActive) {
+            requestStopTracking {
+                SessionStore.clear(this)
+                session = null
+                showSetupPanel()
+            }
+        } else {
+            SessionStore.clear(this)
+            session = null
+            showSetupPanel()
         }
     }
 
@@ -447,15 +526,15 @@ class MainActivity : AppCompatActivity() {
     private fun updateRoadSectionUi() {
         if (!tracking) {
             binding.roadSectionRead.text = "Start tracking"
-            binding.roadSectionBox.setBackgroundColor(Color.parseColor("#0d1628"))
+            binding.roadSectionBox.setBackgroundColor(ContextCompat.getColor(this, R.color.road_idle))
             return
         }
         if (sectionType == "road") {
             binding.roadSectionRead.text = sectionLabel ?: "Road section"
-            binding.roadSectionBox.setBackgroundColor(Color.parseColor("#10244a"))
+            binding.roadSectionBox.setBackgroundColor(ContextCompat.getColor(this, R.color.road_on))
         } else {
             binding.roadSectionRead.text = "Off route"
-            binding.roadSectionBox.setBackgroundColor(Color.parseColor("#1a1710"))
+            binding.roadSectionBox.setBackgroundColor(ContextCompat.getColor(this, R.color.road_off))
         }
     }
 
@@ -987,14 +1066,12 @@ class MainActivity : AppCompatActivity() {
                     if (stopLock == true) R.string.status_hint_locked else R.string.status_hint_tracking
                 )
                 binding.statusText.setTextColor(ContextCompat.getColor(this, R.color.go))
-                binding.toggleBtn.setText(R.string.stop_tracking)
-                binding.toggleBtn.backgroundTintList =
-                    ContextCompat.getColorStateList(this, R.color.stop)
-                binding.toggleBtn.setTextColor(ContextCompat.getColor(this, android.R.color.white))
+                binding.toggleBtn.visibility = View.GONE
             } else {
                 binding.statusText.setText(R.string.status_ready)
                 binding.statusHint.setText(R.string.status_hint_ready)
                 binding.statusText.setTextColor(ContextCompat.getColor(this, R.color.ink))
+                binding.toggleBtn.visibility = View.VISIBLE
                 binding.toggleBtn.setText(R.string.start_tracking)
                 binding.toggleBtn.backgroundTintList =
                     ContextCompat.getColorStateList(this, R.color.go)

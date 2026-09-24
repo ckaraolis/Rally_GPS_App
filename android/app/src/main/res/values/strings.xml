@@ -25,4 +25,10 @@
     <string name="notification_text">Background tracking is on. GPS stays live with the screen locked.</string>
     <string name="channel_name">Live tracking</string>
     <string name="channel_desc">Shows while the car is being tracked</string>
+    <string name="settings_title">Settings</string>
+    <string name="settings_content_desc">Settings</string>
+    <string name="theme_label">Theme</string>
+    <string name="theme_dark">Dark</string>
+    <string name="theme_light">Light</string>
+    <string name="change_car_server">Change car / server</string>
 </resources>
