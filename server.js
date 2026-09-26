@@ -633,14 +633,33 @@ function asyncHandler(fn) {
   };
 }
 
-app.get("/api/health", (_req, res) => {
-  res.json({
-    ok: true,
-    store: store.mode,
-    supabase: hasSupabase(),
-    time: Date.now(),
-  });
-});
+app.get(
+  "/api/health",
+  asyncHandler(async (_req, res) => {
+    let cars = null;
+    let liveRallyId = null;
+    try {
+      cars = (await store.listCars()).length;
+    } catch (err) {
+      cars = -1;
+      console.error("health cars", err.message);
+    }
+    try {
+      const live = await store.getLiveRally();
+      liveRallyId = live?.id || null;
+    } catch (err) {
+      console.error("health live", err.message);
+    }
+    res.json({
+      ok: true,
+      store: store.mode,
+      supabase: hasSupabase(),
+      cars,
+      liveRallyId,
+      time: Date.now(),
+    });
+  })
+);
 
 app.get("/api/test/session", (_req, res) => {
   res.json(testSession.snapshot());

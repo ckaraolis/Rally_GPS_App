@@ -544,28 +544,51 @@ let refreshSeq = 0;
 
 async function refresh() {
   const seq = ++refreshSeq;
-  const res = await fetch("/api/cars");
-  const data = await res.json();
+  let res;
+  let data;
+  try {
+    res = await fetch("/api/cars");
+    data = await res.json().catch(() => ({}));
+  } catch (err) {
+    if (seq !== refreshSeq) return;
+    mapModeHint.textContent = `Could not load cars: ${err.message || "network error"}`;
+    return;
+  }
   // Drop stale overlapping polls so a slow older response cannot hide a fresh OK/SOS.
   if (seq !== refreshSeq) return;
+  if (!res.ok) {
+    mapModeHint.textContent = data.error || `Could not load cars (${res.status}).`;
+    return;
+  }
+
   latestCars = data.cars || [];
   liveRally = data.liveRally || null;
   if (data.ralliesReady === false) ralliesReady = false;
   else if (data.ralliesReady === true) ralliesReady = true;
 
+  // History view must not hide a LIVE session — phones keep sending GPS.
+  if (viewingRallyId && liveRally) {
+    viewingRallyId = null;
+    historyCars = [];
+  }
+
   if (viewingRallyId) {
     renderList(historyCars, { history: true });
     renderMap(historyCars);
+    mapModeHint.textContent = `History view — live GPS is paused here. Tap Back to live / a LIVE rally to see cars on course.`;
     return;
   }
 
   const showOnMap = data.mapOpen !== false;
+  const withGps = latestCars.filter((car) => car.last).length;
   if (liveRally) {
-    mapModeHint.textContent = `LIVE: ${liveRally.name} — cars are on the map.`;
+    mapModeHint.textContent = `LIVE: ${liveRally.name} — ${latestCars.length} car(s), ${withGps} with GPS on the map.`;
   } else if (!ralliesReady) {
     mapModeHint.textContent = "Rallies table not ready. Cars still show on the map. Run supabase/schema_rallies.sql.";
   } else if (showOnMap) {
     mapModeHint.textContent = "Create a rally and tap Go live to start an official live session.";
+  } else if (latestCars.length) {
+    mapModeHint.textContent = `No LIVE rally — ${latestCars.length} car(s) are in the list but hidden on the map. Tap Go live.`;
   } else {
     mapModeHint.textContent = "No LIVE rally. Cars stay in the list but are hidden on the map until you go live.";
   }
@@ -1480,8 +1503,11 @@ function renderMap(cars) {
 
   for (const car of cars) {
     if (!car.last) continue;
+    const lat = Number(car.last.lat);
+    const lon = Number(car.last.lon);
+    if (!Number.isFinite(lat) || !Number.isFinite(lon)) continue;
     seen.add(car.id);
-    bounds.push([car.last.lat, car.last.lon]);
+    bounds.push([lat, lon]);
 
     const color = markerColor(car);
     const html = `<div class="leaflet-marker-num" style="background:${color}">${escapeHtml(
@@ -1491,10 +1517,10 @@ function renderMap(cars) {
 
     if (markers.has(car.id)) {
       const marker = markers.get(car.id);
-      marker.setLatLng([car.last.lat, car.last.lon]).setIcon(icon);
+      marker.setLatLng([lat, lon]).setIcon(icon);
       marker.setPopupContent(popupHtml(car));
     } else {
-      const marker = L.marker([car.last.lat, car.last.lon], {
+      const marker = L.marker([lat, lon], {
         icon,
         title: `#${car.carNumber}`,
       }).addTo(map);
@@ -1510,9 +1536,14 @@ function renderMap(cars) {
     }
   }
 
-  if (!fittedOnce && bounds.length) {
-    map.fitBounds(bounds, { padding: [40, 40], maxZoom: 14 });
-    fittedOnce = true;
+  if (bounds.length) {
+    if (!fittedOnce) {
+      map.fitBounds(bounds, { padding: [40, 40], maxZoom: 14 });
+      fittedOnce = true;
+    }
+  } else {
+    // Allow the next car that appears to re-center the map.
+    fittedOnce = false;
   }
 }
 
