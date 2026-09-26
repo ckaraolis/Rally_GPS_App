@@ -503,18 +503,18 @@ function normalizePoint(raw) {
   };
 }
 
-function applyFix(car, point, sections, { detect = true } = {}) {
+function applyFix(car, point, sections, { detect = true, updateLast = true } = {}) {
   car.tracking = true;
-  // Always move the live marker for each accepted fix. Comparing only on GPS
-  // timestamps left cars frozen when the phone clock / location.time jumped.
-  car.last = {
-    lat: point.lat,
-    lon: point.lon,
-    heading: point.heading,
-    speed: point.speed,
-    accuracy: point.accuracy,
-    ts: point.ts,
-  };
+  if (updateLast) {
+    car.last = {
+      lat: point.lat,
+      lon: point.lon,
+      heading: point.heading,
+      speed: point.speed,
+      accuracy: point.accuracy,
+      ts: point.ts,
+    };
+  }
 
   if (!Array.isArray(car.trail)) car.trail = [];
   const prev = car.trail[car.trail.length - 1];
@@ -794,6 +794,7 @@ app.post(
     if (!rawPoints.length) {
       return res.status(400).json({ error: "No GPS points." });
     }
+    const trailOnly = Boolean(req.body.trailOnly);
     const points = rawPoints
       .slice(0, MAX_BATCH)
       .map(normalizePoint)
@@ -805,7 +806,20 @@ app.post(
 
     const { sections } = await liveSections();
     for (let i = 0; i < points.length; i += 1) {
-      applyFix(car, points[i], sections, { detect: i === points.length - 1 });
+      const isNewest = i === points.length - 1;
+      // Catch-up uploads (trailOnly) build the route without walking the HQ marker.
+      applyFix(car, points[i], sections, {
+        detect: !trailOnly && isNewest,
+        updateLast: !trailOnly && isNewest,
+      });
+    }
+    // If a trail-only batch somehow includes a newer fix than we have, jump to it once.
+    if (trailOnly) {
+      const newest = points[points.length - 1];
+      const lastTs = Number(car.last?.ts);
+      if (!car.last || !Number.isFinite(lastTs) || newest.ts > lastTs) {
+        applyFix(car, newest, sections, { detect: true, updateLast: true });
+      }
     }
     car.reconnectRequested = null;
     await store.saveCar(car);

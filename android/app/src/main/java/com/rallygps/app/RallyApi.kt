@@ -74,13 +74,14 @@ class RallyApi(baseUrl: String) {
         return postPing("$root/api/ping", payload)
     }
 
-    fun pingBatch(id: String, token: String, points: List<FixQueue.Fix>): PingResult {
+    fun pingBatch(id: String, token: String, points: List<FixQueue.Fix>, trailOnly: Boolean = false): PingResult {
         val arr = JSONArray()
         points.forEach { arr.put(it.toJson()) }
         val payload = JSONObject()
             .put("id", id)
             .put("token", token)
             .put("points", arr)
+        if (trailOnly) payload.put("trailOnly", true)
         return postPing("$root/api/ping-batch", payload)
     }
 

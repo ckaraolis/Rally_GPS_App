@@ -285,23 +285,75 @@ class TrackingService : Service() {
         val client = api ?: return
         flushing = true
         try {
+            // Jump race control to the newest fix first; older points only build the route.
+            val newest = FixQueue.takeNewest(this)
+            if (newest != null) {
+                try {
+                    val ping = client.ping(
+                        current.id,
+                        current.token,
+                        newest.lat,
+                        newest.lon,
+                        newest.heading,
+                        newest.speed,
+                        newest.accuracy,
+                        newest.ts
+                    )
+                    lastPingOkAt = System.currentTimeMillis()
+                    if (broadcastStatus && running) {
+                        broadcast(
+                            tracking = true,
+                            lat = newest.lat,
+                            lon = newest.lon,
+                            speed = newest.speed,
+                            heading = newest.heading,
+                            accuracy = newest.accuracy,
+                            sent = true,
+                            queued = FixQueue.size(this),
+                            sectionType = ping.sectionType,
+                            sectionName = ping.sectionName,
+                            sectionLabel = ping.sectionLabel,
+                            sectionId = ping.sectionId,
+                            flagStatus = ping.flagStatus,
+                            flagTs = ping.flagTs,
+                            flagAcked = ping.flagAcked,
+                            stopLock = ping.stopLock
+                        )
+                    }
+                } catch (error: Exception) {
+                    // Put it back at the end so a later flush can retry.
+                    FixQueue.enqueue(this, newest)
+                    if (error.message?.contains("Unknown car", ignoreCase = true) == true) {
+                        running = false
+                    }
+                    if (broadcastStatus && running) {
+                        val last = lastLocation
+                        broadcast(
+                            tracking = true,
+                            lat = last?.latitude,
+                            lon = last?.longitude,
+                            speed = last?.takeIf { it.hasSpeed() }?.speed,
+                            heading = last?.takeIf { it.hasBearing() }?.bearing,
+                            accuracy = last?.takeIf { it.hasAccuracy() }?.accuracy,
+                            sent = false,
+                            queued = FixQueue.size(this),
+                            error = "queued"
+                        )
+                    }
+                    return
+                }
+            }
+
             while (true) {
                 val batch = FixQueue.peek(this, 80)
                 if (batch.isEmpty()) break
                 try {
-                    val ping = client.pingBatch(current.id, current.token, batch)
+                    val ping = client.pingBatch(current.id, current.token, batch, trailOnly = true)
                     FixQueue.removeFirst(this, batch.size)
                     lastPingOkAt = System.currentTimeMillis()
-                    val last = batch.last()
-                    // Never rebroadcast tracking=true after the user has stopped.
                     if (broadcastStatus && running) {
                         broadcast(
                             tracking = true,
-                            lat = last.lat,
-                            lon = last.lon,
-                            speed = last.speed,
-                            heading = last.heading,
-                            accuracy = last.accuracy,
                             sent = true,
                             queued = FixQueue.size(this),
                             sectionType = ping.sectionType,

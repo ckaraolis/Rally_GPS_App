@@ -86,6 +86,17 @@ object FixQueue {
         return load(context).take(limit)
     }
 
+    /** Remove and return the newest fix so HQ can jump to the latest point first. */
+    @Synchronized
+    fun takeNewest(context: Context): Fix? {
+        val queue = load(context)
+        if (queue.isEmpty()) return null
+        val idx = queue.indices.maxByOrNull { queue[it].ts } ?: return null
+        val fix = queue.removeAt(idx)
+        save(context, queue)
+        return fix
+    }
+
     @Synchronized
     fun removeFirst(context: Context, count: Int) {
         if (count <= 0) return
