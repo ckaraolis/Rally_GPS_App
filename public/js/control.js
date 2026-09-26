@@ -39,6 +39,17 @@ function markerColor(car) {
   return MOTION_COLORS[carMotion(car)] || MOTION_COLORS.stopped;
 }
 
+function ageLabel(ts) {
+  const t = Number(ts);
+  if (!Number.isFinite(t)) return "no GPS yet";
+  const sec = Math.max(0, Math.round((Date.now() - t) / 1000));
+  if (sec < 5) return "just now";
+  if (sec < 60) return `${sec}s ago`;
+  const min = Math.round(sec / 60);
+  if (min < 60) return `${min}m ago`;
+  return `${Math.round(min / 60)}h ago`;
+}
+
 const copyBtn = document.getElementById("copyLink");
 const routeFile = document.getElementById("routeFile");
 const clearRoutes = document.getElementById("clearRoutes");
@@ -1386,7 +1397,7 @@ function renderList(cars, { history = false } = {}) {
         <span class="dot" style="background:${color}"></span>
         <div>
           <strong>#${escapeHtml(car.carNumber)} ${escapeHtml(car.driverName)}</strong>
-          <small>${state} · ${motionLabel} · ${speed}${crewLabel ? ` · ${crewLabel}` : ""}${flagLabel}</small>
+          <small>${state} · ${motionLabel} · ${speed} · ${ageLabel(car.last?.ts)}${crewLabel ? ` · ${crewLabel}` : ""}${flagLabel}</small>
           <small class="section-line">${escapeHtml(section)}</small>
           <div class="car-actions">
             <button type="button" class="mini-toggle${showing ? " active" : ""}" data-route="${car.id}" ${

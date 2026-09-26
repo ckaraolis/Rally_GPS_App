@@ -505,16 +505,16 @@ function normalizePoint(raw) {
 
 function applyFix(car, point, sections, { detect = true } = {}) {
   car.tracking = true;
-  if (!car.last || point.ts >= Number(car.last.ts) || !Number.isFinite(Number(car.last.ts))) {
-    car.last = {
-      lat: point.lat,
-      lon: point.lon,
-      heading: point.heading,
-      speed: point.speed,
-      accuracy: point.accuracy,
-      ts: point.ts,
-    };
-  }
+  // Always move the live marker for each accepted fix. Comparing only on GPS
+  // timestamps left cars frozen when the phone clock / location.time jumped.
+  car.last = {
+    lat: point.lat,
+    lon: point.lon,
+    heading: point.heading,
+    speed: point.speed,
+    accuracy: point.accuracy,
+    ts: point.ts,
+  };
 
   if (!Array.isArray(car.trail)) car.trail = [];
   const prev = car.trail[car.trail.length - 1];

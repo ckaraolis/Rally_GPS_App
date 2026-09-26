@@ -37,13 +37,21 @@ object FixQueue {
 
         companion object {
             fun from(location: Location): Fix {
+                val now = System.currentTimeMillis()
+                val gpsTs = location.time
+                // Some phones report a stale/wrong location.time; that froze the HQ marker.
+                val ts = when {
+                    gpsTs <= 0L -> now
+                    kotlin.math.abs(now - gpsTs) > 5 * 60 * 1000L -> now
+                    else -> gpsTs
+                }
                 return Fix(
                     lat = location.latitude,
                     lon = location.longitude,
                     heading = if (location.hasBearing()) location.bearing else null,
                     speed = if (location.hasSpeed()) location.speed else null,
                     accuracy = if (location.hasAccuracy()) location.accuracy else null,
-                    ts = location.time.takeIf { it > 0L } ?: System.currentTimeMillis()
+                    ts = ts
                 )
             }
 
