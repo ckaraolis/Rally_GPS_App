@@ -1197,6 +1197,44 @@ async function flushQueue() {
   flushing = true;
   let lastData = null;
   try {
+    // Jump HQ to the newest fix first; older points only build the route.
+    const full = loadQueue();
+    if (full.length) {
+      let newestIdx = 0;
+      for (let i = 1; i < full.length; i += 1) {
+        if (Number(full[i].ts) > Number(full[newestIdx].ts)) newestIdx = i;
+      }
+      const newest = full[newestIdx];
+      const res = await fetch("/api/ping", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          id: session.id,
+          token: session.token,
+          lat: newest.lat,
+          lon: newest.lon,
+          heading: newest.heading,
+          speed: newest.speed,
+          accuracy: newest.accuracy,
+          ts: newest.ts,
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.status === 401) {
+        localStorage.removeItem(KEY);
+        localStorage.removeItem(QUEUE_KEY);
+        await stopTracking();
+        showError("This car was taken over by another phone. Join again.");
+        setupPanel.classList.remove("hidden");
+        trackPanel.classList.add("hidden");
+        return { ok: false };
+      }
+      if (!res.ok) throw new Error(data.error || "Ping failed");
+      full.splice(newestIdx, 1);
+      saveQueue(full);
+      lastData = data;
+    }
+
     while (true) {
       const queue = loadQueue();
       if (!queue.length) break;
@@ -1204,7 +1242,12 @@ async function flushQueue() {
       const res = await fetch("/api/ping-batch", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id: session.id, token: session.token, points: batch }),
+        body: JSON.stringify({
+          id: session.id,
+          token: session.token,
+          points: batch,
+          trailOnly: true,
+        }),
       });
       const data = await res.json().catch(() => ({}));
       if (res.status === 401) {
