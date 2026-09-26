@@ -281,6 +281,8 @@ function hasAckedFlag(car, section) {
 function serializeCar(car, { includeTrail = false, sections = null } = {}) {
   const motion = carMotion(car);
   const { flagStatus, live } = flagForCar(car, sections);
+  const trail = Array.isArray(car.trail) ? car.trail : [];
+  const trailCount = Number.isFinite(Number(car.trailCount)) ? Number(car.trailCount) : trail.length;
   return {
     id: car.id,
     carNumber: car.carNumber,
@@ -295,8 +297,8 @@ function serializeCar(car, { includeTrail = false, sections = null } = {}) {
     flagAcked: hasAckedFlag(car, live),
     reconnectRequested: Boolean(car.reconnectRequested),
     motion,
-    trailCount: Array.isArray(car.trail) ? car.trail.length : 0,
-    ...(includeTrail ? { trail: car.trail || [] } : {}),
+    trailCount,
+    ...(includeTrail ? { trail } : {}),
   };
 }
 
@@ -314,7 +316,7 @@ function parseRallyStatus(value, fallback = "draft") {
 }
 
 async function snapshotRally(rally) {
-  const cars = await store.listCars();
+  const cars = await store.listCars({ includeTrail: true });
   rally.status = "ended";
   rally.snapshot = cars.map((car) => serializeCar(car, { includeTrail: true }));
   rally.carCount = cars.length;
@@ -639,7 +641,7 @@ app.get(
     let cars = null;
     let liveRallyId = null;
     try {
-      cars = (await store.listCars()).length;
+      cars = (await store.listCars({ includeTrail: false })).length;
     } catch (err) {
       cars = -1;
       console.error("health cars", err.message);
@@ -893,7 +895,7 @@ app.post(
 app.get(
   "/api/cars",
   asyncHandler(async (_req, res) => {
-    const cars = await store.listCars();
+    const cars = await store.listCars({ includeTrail: false });
     let liveRally = null;
     let ralliesReady = true;
     let rallyCount = 0;
@@ -906,13 +908,42 @@ app.get(
       console.error("rally_events unavailable", err.message);
     }
     const mapOpen = Boolean(liveRally) || !ralliesReady || rallyCount === 0;
-    const { sections } = await liveSections();
+    let sections = [];
+    try {
+      ({ sections } = await liveSections());
+    } catch (err) {
+      console.error("live sections for cars", err.message);
+    }
+    const payload = [];
+    for (const car of cars) {
+      try {
+        payload.push(serializeCar(car, { sections }));
+      } catch (err) {
+        console.error("serialize car", car?.id, err.message);
+        payload.push({
+          id: car.id,
+          carNumber: car.carNumber,
+          driverName: car.driverName,
+          color: car.color || "#ff7a18",
+          tracking: Boolean(car.tracking),
+          live: false,
+          last: car.last || null,
+          section: car.section || null,
+          crewStatus: car.crewStatus || null,
+          flagStatus: "green",
+          flagAcked: true,
+          reconnectRequested: Boolean(car.reconnectRequested),
+          motion: "stopped",
+          trailCount: Number(car.trailCount) || 0,
+        });
+      }
+    }
     res.json({
       serverTime: Date.now(),
       ralliesReady,
       mapOpen,
       liveRally: rallySummary(liveRally),
-      cars: cars.map((car) => serializeCar(car, { sections })),
+      cars: payload,
     });
   })
 );
@@ -1427,7 +1458,10 @@ app.get("/earth-link.kml", (req, res) => {
 app.get(
   "/earth.kml",
   asyncHandler(async (_req, res) => {
-    const [cars, liveRoute] = await Promise.all([store.listCars(), liveSections()]);
+    const [cars, liveRoute] = await Promise.all([
+      store.listCars({ includeTrail: true }),
+      liveSections(),
+    ]);
     const sections = liveRoute.sections;
     let mapOpen = true;
     try {

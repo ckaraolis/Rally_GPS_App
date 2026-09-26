@@ -32,3 +32,11 @@ alter table rally_cars
 
 alter table rally_cars
   add column if not exists reconnect_requested bigint;
+
+-- Length of trail jsonb; keeps /api/cars light without selecting full trails.
+alter table rally_cars
+  add column if not exists trail_count integer not null default 0;
+
+update rally_cars
+set trail_count = coalesce(jsonb_array_length(trail), 0)
+where trail_count = 0 and trail is not null;
