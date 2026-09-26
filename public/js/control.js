@@ -541,9 +541,14 @@ function fileToBase64(file) {
 }
 
 let refreshSeq = 0;
+let refreshInFlight = null;
 
 async function refresh() {
+  // Never overlap polls — a slow /api/cars was canceling itself every 1.5s
+  // so the car list stayed stuck on "Waiting for drivers…".
+  if (refreshInFlight) return refreshInFlight;
   const seq = ++refreshSeq;
+  refreshInFlight = (async () => {
   let res;
   let data;
   try {
@@ -554,7 +559,6 @@ async function refresh() {
     mapModeHint.textContent = `Could not load cars: ${err.message || "network error"}`;
     return;
   }
-  // Drop stale overlapping polls so a slow older response cannot hide a fresh OK/SOS.
   if (seq !== refreshSeq) return;
   if (!res.ok) {
     mapModeHint.textContent = data.error || `Could not load cars (${res.status}).`;
@@ -595,6 +599,12 @@ async function refresh() {
   renderList(latestCars);
   renderMap(showOnMap ? latestCars : []);
   if (showOnMap) await refreshVisibleTrails();
+  })();
+  try {
+    await refreshInFlight;
+  } finally {
+    refreshInFlight = null;
+  }
 }
 
 async function refreshSections() {

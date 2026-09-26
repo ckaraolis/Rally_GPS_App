@@ -17,27 +17,42 @@ const MAX_BATCH = 250;
 const MAX_POINT_AGE_MS = 24 * 60 * 60 * 1000;
 const store = getStore();
 
+let liveSectionsCache = { at: 0, value: null };
+
 async function liveSections() {
+  const now = Date.now();
+  if (liveSectionsCache.value && now - liveSectionsCache.at < 4000) {
+    return liveSectionsCache.value;
+  }
+  let value;
   try {
     const live = await store.getLiveRally();
     if (live?.id) {
       const full = (await store.getRally(live.id).catch(() => live)) || live;
-      return {
+      value = {
         rallyId: live.id,
         sections: await store.listSections(live.id),
         pinIcons: full.pinIcons || {},
       };
+      liveSectionsCache = { at: now, value };
+      return value;
     }
     const rallies = await store.listRallies();
-    if (rallies.length) return { rallyId: null, sections: [], pinIcons: {} };
+    if (rallies.length) {
+      value = { rallyId: null, sections: [], pinIcons: {} };
+      liveSectionsCache = { at: now, value };
+      return value;
+    }
   } catch {
     /* rallies table missing — fall back to any stored route */
   }
   try {
-    return { rallyId: null, sections: await store.listSections(), pinIcons: {} };
+    value = { rallyId: null, sections: await store.listSections(), pinIcons: {} };
   } catch {
-    return { rallyId: null, sections: [], pinIcons: {} };
+    value = { rallyId: null, sections: [], pinIcons: {} };
   }
+  liveSectionsCache = { at: now, value };
+  return value;
 }
 
 app.set("trust proxy", 1);
