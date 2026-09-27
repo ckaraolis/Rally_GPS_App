@@ -481,19 +481,11 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun updateStopWatch(speed: Float?) {
-        val moving = (speed ?: 0f) > STOPPED_SPEED_MPS
-        if (moving) {
-            stoppedSinceMs = null
-            acknowledgedStop = false
-            hideCrewAlert()
-            return
-        }
-        val now = System.currentTimeMillis()
-        if (stoppedSinceMs == null) stoppedSinceMs = now
-        val stoppedFor = now - (stoppedSinceMs ?: now)
-        if (stoppedFor >= STOPPED_ALERT_MS && !acknowledgedStop) {
-            showCrewAlert()
-        }
+        // TEST: disable automatic "STOPPED ON STAGE" OK/SOS prompt.
+        // Crew can still send SOS manually from the stage buttons.
+        hideCrewAlert()
+        stoppedSinceMs = null
+        acknowledgedStop = true
     }
 
     private fun applyFlagFromServer(status: String, flagTs: Long, acked: Boolean) {

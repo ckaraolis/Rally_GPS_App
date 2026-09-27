@@ -28,8 +28,12 @@ const MOTION_COLORS = {
 };
 
 function carMotion(car) {
+  if (car.crewStatus?.status === "sos") return "sos";
+  // Prefer server motion, but never treat LIVE as stopped during the green-always test.
+  if (car.live && car.motion !== "sos") return "moving";
   if (car.motion === "sos" || car.motion === "moving" || car.motion === "stopped") return car.motion;
   if (car.crewStatus?.status === "sos") return "sos";
+  if (car.live || car.tracking) return "moving";
   const speed = Number(car.last?.speed);
   if (Number.isFinite(speed) && speed > STOPPED_SPEED_MPS) return "moving";
   return "stopped";

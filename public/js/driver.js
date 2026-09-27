@@ -662,20 +662,12 @@ function hideCrewAlert() {
 }
 
 function updateStopWatch(speed) {
+  // TEST: disable automatic "STOPPED ON STAGE" OK/SOS prompt.
+  // Crew can still send SOS manually from the stage buttons.
   if (!inStage) return;
-  const moving = speed != null && !Number.isNaN(speed) && speed > STOPPED_SPEED_MPS;
-  if (moving) {
-    stoppedSinceMs = null;
-    acknowledgedStop = false;
-    hideCrewAlert();
-    renderMode();
-    return;
-  }
-  const now = Date.now();
-  if (stoppedSinceMs == null) stoppedSinceMs = now;
-  if (now - stoppedSinceMs >= STOPPED_ALERT_MS && !acknowledgedStop) {
-    showCrewAlert();
-  }
+  stoppedSinceMs = null;
+  acknowledgedStop = true;
+  if (crewAlert && !crewAlert.classList.contains("hidden")) hideCrewAlert();
 }
 
 async function startTracking() {

@@ -235,6 +235,8 @@ const MOTION_KML_ICONS = {
 
 function carMotion(car) {
   if (car.crewStatus?.status === "sos") return "sos";
+  // TEST: live cars stay green — ignore stopped/blue while tracking with recent GPS.
+  if (isLive(car)) return "moving";
   const speed = Number(car.last?.speed);
   if (Number.isFinite(speed) && speed > STOPPED_SPEED_MPS) return "moving";
   return "stopped";

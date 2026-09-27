@@ -8,7 +8,7 @@
   <link rel="manifest" href="/manifest.json" />
   <link rel="icon" href="/icons/icon.svg" type="image/svg+xml" />
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-  <link rel="stylesheet" href="/css/app.css?v=mapcars5" />
+  <link rel="stylesheet" href="/css/app.css?v=livgreen2" />
 </head>
 <body class="control-body">
   <div class="tape" aria-hidden="true"></div>
@@ -105,7 +105,7 @@
       <p id="mapModeHint" class="hint">Loading cars…</p>
       <button id="refreshLostBtn" type="button" class="btn btn-ghost">Refresh lost cars</button>
       <button id="clearCarsBtn" type="button" class="btn btn-ghost">Clear rally cars</button>
-      <p class="hint">Green = moving, blue = stopped, red = SOS. Refresh holds last GPS. No GSM: the phone saves GPS and the route appears when signal returns.</p>
+      <p class="hint">TEST: green = live (always while connected), red = SOS. Blue stopped is off for this test. Refresh holds last GPS.</p>
       <ul id="carList" class="car-list">
         <li class="empty">Waiting for drivers to start tracking…</li>
       </ul>
@@ -133,6 +133,6 @@
   </div>
 
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-  <script src="/js/control.js?v=mapcars5"></script>
+  <script src="/js/control.js?v=livgreen2"></script>
 </body>
 </html>
