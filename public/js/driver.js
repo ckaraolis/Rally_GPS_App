@@ -1134,20 +1134,15 @@ function applySectionAndFlag(data) {
 
 function pointFromFix(pos) {
   const { latitude: lat, longitude: lon, heading, speed, accuracy } = pos.coords;
-  const now = Date.now();
-  const gpsTs = Number(pos.timestamp);
-  // Mock / Bluetooth GPS often reports a stale location.timestamp; that froze HQ.
-  const ts =
-    !Number.isFinite(gpsTs) || gpsTs <= 0 || Math.abs(now - gpsTs) > 5 * 60 * 1000
-      ? now
-      : gpsTs;
+  // Stamp with receive time, not GPS clock — Bluetooth/mock receivers often report
+  // a stale timestamp, so "newest by ts" kept HQ on the start fix while driving.
   return {
     lat,
     lon,
     heading: heading == null || Number.isNaN(heading) ? null : heading,
     speed: speed == null || Number.isNaN(speed) ? null : speed,
     accuracy: accuracy == null || Number.isNaN(accuracy) ? null : accuracy,
-    ts,
+    ts: Date.now(),
   };
 }
 
@@ -1196,14 +1191,10 @@ async function flushQueue() {
   flushing = true;
   let lastData = null;
   try {
-    // Jump HQ to the newest fix first; older points only build the route.
+    // Jump HQ to the most recently queued fix; older points only build the route.
     const full = loadQueue();
     if (full.length) {
-      let newestIdx = 0;
-      for (let i = 1; i < full.length; i += 1) {
-        if (Number(full[i].ts) > Number(full[newestIdx].ts)) newestIdx = i;
-      }
-      const newest = full[newestIdx];
+      const newest = full[full.length - 1];
       const res = await fetch("/api/ping", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -1229,7 +1220,7 @@ async function flushQueue() {
         return { ok: false };
       }
       if (!res.ok) throw new Error(data.error || "Ping failed");
-      full.splice(newestIdx, 1);
+      full.pop();
       saveQueue(full);
       lastData = data;
     }

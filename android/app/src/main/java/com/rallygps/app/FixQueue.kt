@@ -37,21 +37,16 @@ object FixQueue {
 
         companion object {
             fun from(location: Location): Fix {
-                val now = System.currentTimeMillis()
-                val gpsTs = location.time
-                // Some phones report a stale/wrong location.time; that froze the HQ marker.
-                val ts = when {
-                    gpsTs <= 0L -> now
-                    kotlin.math.abs(now - gpsTs) > 5 * 60 * 1000L -> now
-                    else -> gpsTs
-                }
+                // Always stamp with device receive time. Bluetooth / mock GPS clocks
+                // (e.g. Garmin GLO) are often minutes off; max-by-gps-time then kept
+                // picking the start fix and HQ looked frozen while the car moved.
                 return Fix(
                     lat = location.latitude,
                     lon = location.longitude,
                     heading = if (location.hasBearing()) location.bearing else null,
                     speed = if (location.hasSpeed()) location.speed else null,
                     accuracy = if (location.hasAccuracy()) location.accuracy else null,
-                    ts = ts
+                    ts = System.currentTimeMillis()
                 )
             }
 
@@ -86,13 +81,12 @@ object FixQueue {
         return load(context).take(limit)
     }
 
-    /** Remove and return the newest fix so HQ can jump to the latest point first. */
+    /** Remove and return the most recently queued fix so HQ jumps to where the car is now. */
     @Synchronized
     fun takeNewest(context: Context): Fix? {
         val queue = load(context)
         if (queue.isEmpty()) return null
-        val idx = queue.indices.maxByOrNull { queue[it].ts } ?: return null
-        val fix = queue.removeAt(idx)
+        val fix = queue.removeAt(queue.lastIndex)
         save(context, queue)
         return fix
     }
