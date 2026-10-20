@@ -535,6 +535,79 @@ function applyFix(car, point, sections, { detect = true, updateLast = true } = {
   }
 }
 
+/** HQ marker must follow the chronologically newest fix we know about (last ∪ trail). */
+function syncLastFromKnownPoints(car) {
+  const trail = Array.isArray(car.trail) ? car.trail : [];
+  const candidates = [];
+  if (car.last && Number.isFinite(Number(car.last.lat)) && Number.isFinite(Number(car.last.lon))) {
+    candidates.push(car.last);
+  }
+  for (const p of trail) {
+    if (p && Number.isFinite(Number(p.lat)) && Number.isFinite(Number(p.lon))) candidates.push(p);
+  }
+  if (!candidates.length) return;
+
+  const now = Date.now();
+  const fresh = candidates.filter((p) => {
+    const ts = Number(p.ts);
+    return Number.isFinite(ts) && ts <= now + 120_000 && now - ts < 15 * 60 * 1000;
+  });
+  const pool = fresh.length ? fresh : candidates;
+
+  let best = pool[0];
+  let bestTs = Number(best.ts);
+  if (!Number.isFinite(bestTs)) bestTs = -Infinity;
+  for (let i = 1; i < pool.length; i += 1) {
+    const ts = Number(pool[i].ts);
+    const t = Number.isFinite(ts) ? ts : -Infinity;
+    if (t >= bestTs) {
+      best = pool[i];
+      bestTs = t;
+    }
+  }
+
+  // Catch-up can leave last on the start fix (fresh pings) while the trail already
+  // shows the car further along — snap to the newest trail point in that case.
+  if (trail.length >= 2) {
+    let trailNewest = null;
+    let trailNewestTs = -Infinity;
+    let trailOldest = null;
+    let trailOldestTs = Infinity;
+    for (const p of trail) {
+      if (!p || !Number.isFinite(Number(p.lat)) || !Number.isFinite(Number(p.lon))) continue;
+      const ts = Number(p.ts);
+      const t = Number.isFinite(ts) ? ts : 0;
+      if (t >= trailNewestTs) {
+        trailNewest = p;
+        trailNewestTs = t;
+      }
+      if (t <= trailOldestTs) {
+        trailOldest = p;
+        trailOldestTs = t;
+      }
+    }
+    if (
+      trailNewest &&
+      trailOldest &&
+      haversineMeters(best, trailNewest) > 40 &&
+      haversineMeters(best, trailOldest) < 80
+    ) {
+      best = trailNewest;
+      bestTs = trailNewestTs;
+    }
+  }
+
+  car.last = {
+    lat: Number(best.lat),
+    lon: Number(best.lon),
+    heading: best.heading ?? car.last?.heading ?? null,
+    speed: best.speed ?? car.last?.speed ?? null,
+    accuracy: best.accuracy ?? car.last?.accuracy ?? null,
+    ts: Number.isFinite(bestTs) ? bestTs : now,
+  };
+  car.tracking = true;
+}
+
 function pingPayload(car, sections, stopLock = false) {
   const { flagStatus, flagTs, live } = flagForCar(car, sections);
   return {
@@ -777,6 +850,17 @@ app.post(
 
     const { sections } = await liveSections();
     applyFix(car, point, sections, { detect: true });
+    syncLastFromKnownPoints(car);
+    if (car.last && sections) {
+      try {
+        car.section = detectSection(
+          { lat: car.last.lat, lon: car.last.lon },
+          sections
+        );
+      } catch (err) {
+        console.error("section detect failed", err.message);
+      }
+    }
     car.reconnectRequested = null;
     await store.saveCar(car);
     const stopLock = (await readLiveStopLock()).required;
@@ -814,12 +898,23 @@ app.post(
         updateLast: !trailOnly && isNewest,
       });
     }
-    // Trail-only batches must never move the HQ marker once we have a live last fix.
-    // Older catch-up points can get timestamps clamped to "now", which used to yank
-    // the marker back onto a stale coordinate and leave the car looking stuck.
+    // Trail-only batches build the route without walking the marker per point.
+    // Afterward, snap last to the newest known fix so HQ cannot stay on the
+    // start point while the trail already shows the car further along.
     if (trailOnly && !car.last) {
       const newest = points[points.length - 1];
       applyFix(car, newest, sections, { detect: true, updateLast: true });
+    }
+    syncLastFromKnownPoints(car);
+    if (car.last && sections) {
+      try {
+        car.section = detectSection(
+          { lat: car.last.lat, lon: car.last.lon },
+          sections
+        );
+      } catch (err) {
+        console.error("section detect failed", err.message);
+      }
     }
     car.reconnectRequested = null;
     await store.saveCar(car);
