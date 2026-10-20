@@ -251,11 +251,10 @@ function motionKmlIcon(motion) {
 }
 
 function reviveLastFix(car) {
+  // Ask the phone to reconnect — do not fake a fresh GPS time, or HQ shows
+  // "just now" / green while the marker stays on the old coordinates.
   car.reconnectRequested = Date.now();
   car.tracking = true;
-  if (car.last && typeof car.last.lat === "number" && typeof car.last.lon === "number") {
-    car.last = { ...car.last, ts: Date.now() };
-  }
 }
 
 function sectionFlag(section) {
@@ -815,13 +814,12 @@ app.post(
         updateLast: !trailOnly && isNewest,
       });
     }
-    // If a trail-only batch somehow includes a newer fix than we have, jump to it once.
-    if (trailOnly) {
+    // Trail-only batches must never move the HQ marker once we have a live last fix.
+    // Older catch-up points can get timestamps clamped to "now", which used to yank
+    // the marker back onto a stale coordinate and leave the car looking stuck.
+    if (trailOnly && !car.last) {
       const newest = points[points.length - 1];
-      const lastTs = Number(car.last?.ts);
-      if (!car.last || !Number.isFinite(lastTs) || newest.ts > lastTs) {
-        applyFix(car, newest, sections, { detect: true, updateLast: true });
-      }
+      applyFix(car, newest, sections, { detect: true, updateLast: true });
     }
     car.reconnectRequested = null;
     await store.saveCar(car);

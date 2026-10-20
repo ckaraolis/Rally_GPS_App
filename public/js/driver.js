@@ -1134,13 +1134,20 @@ function applySectionAndFlag(data) {
 
 function pointFromFix(pos) {
   const { latitude: lat, longitude: lon, heading, speed, accuracy } = pos.coords;
+  const now = Date.now();
+  const gpsTs = Number(pos.timestamp);
+  // Mock / Bluetooth GPS often reports a stale location.timestamp; that froze HQ.
+  const ts =
+    !Number.isFinite(gpsTs) || gpsTs <= 0 || Math.abs(now - gpsTs) > 5 * 60 * 1000
+      ? now
+      : gpsTs;
   return {
     lat,
     lon,
     heading: heading == null || Number.isNaN(heading) ? null : heading,
     speed: speed == null || Number.isNaN(speed) ? null : speed,
     accuracy: accuracy == null || Number.isNaN(accuracy) ? null : accuracy,
-    ts: Number(pos.timestamp) || Date.now(),
+    ts,
   };
 }
 
