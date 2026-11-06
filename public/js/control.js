@@ -66,6 +66,8 @@ const rallyStatus = document.getElementById("rallyStatus");
 const mapModeHint = document.getElementById("mapModeHint");
 const routeTarget = document.getElementById("routeTarget");
 const pinIconPack = document.getElementById("pinIconPack");
+const showStageStartFinishLabel = document.getElementById("showStageStartFinishLabel");
+const showStageStartFinishInput = document.getElementById("showStageStartFinish");
 const PIN_ICON_SLOTS = [
   { kind: "tc", label: "TC" },
   { kind: "start", label: "Start" },
@@ -127,6 +129,7 @@ function updateRouteTarget() {
     pinIcons = {};
     pinIconsRallyId = null;
     renderPinIconSlots();
+    syncShowStageStartFinishToggle(null);
     updateStopCodePanel();
     return;
   }
@@ -137,8 +140,58 @@ function updateRouteTarget() {
     routeTarget.textContent = `KMZ for ${rally.name} (${String(rally.status || "draft").toUpperCase()}). Other rallies keep their own routes.`;
   }
   renderPinIconSlots();
+  syncShowStageStartFinishToggle(rally);
   updateStopCodePanel();
 }
+
+function syncShowStageStartFinishToggle(rally) {
+  if (!showStageStartFinishLabel || !showStageStartFinishInput) return;
+  if (!rally) {
+    showStageStartFinishLabel.hidden = true;
+    showStageStartFinishInput.checked = false;
+    showStageStartFinishInput.disabled = true;
+    return;
+  }
+  showStageStartFinishLabel.hidden = false;
+  showStageStartFinishInput.disabled = false;
+  showStageStartFinishInput.checked = rally.showStageStartFinish === true;
+}
+
+async function setShowStageStartFinish(enabled) {
+  const rally = routeRally();
+  if (!rally?.id) return;
+  const res = await fetch(`/api/rallies/${encodeURIComponent(rally.id)}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ showStageStartFinish: enabled === true }),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || "Could not update map option");
+  const idx = rallyCache.findIndex((r) => r.id === rally.id);
+  if (idx >= 0) {
+    rallyCache[idx] = { ...rallyCache[idx], showStageStartFinish: enabled === true };
+  }
+  if (liveRally?.id === rally.id) {
+    liveRally = { ...liveRally, showStageStartFinish: enabled === true };
+  }
+  syncShowStageStartFinishToggle(routeRally());
+  await refreshSections();
+}
+
+showStageStartFinishInput?.addEventListener("change", async () => {
+  const enabled = showStageStartFinishInput.checked === true;
+  try {
+    await setShowStageStartFinish(enabled);
+    if (routeStatus) {
+      routeStatus.textContent = enabled
+        ? "Stage Start / Finish pins shown on the map."
+        : "Stage Start / Finish pins hidden.";
+    }
+  } catch (err) {
+    showStageStartFinishInput.checked = !enabled;
+    if (routeStatus) routeStatus.textContent = err.message || "Could not update map option.";
+  }
+});
 
 copyBtn.addEventListener("click", async () => {
   const url = `${location.origin}/earth.kml${earthToken ? `?t=${encodeURIComponent(earthToken)}` : ""}`;
@@ -647,6 +700,11 @@ async function refreshSections() {
   const sameRally = pinIconsRallyId === rallyId;
   pinIcons = data.pinIcons || {};
   pinIconsRallyId = rallyId;
+  const showPins = data.showStageStartFinish === true;
+  const idx = rallyCache.findIndex((r) => r.id === rallyId);
+  if (idx >= 0) rallyCache[idx] = { ...rallyCache[idx], showStageStartFinish: showPins };
+  if (liveRally?.id === rallyId) liveRally = { ...liveRally, showStageStartFinish: showPins };
+  syncShowStageStartFinishToggle(routeRally());
   if (!sameRally) renderPinIconSlots();
   renderSections(data.sections || []);
   renderRouteLayers(data.sections || []);
@@ -724,23 +782,36 @@ function renderSections(sections) {
   sectionList.innerHTML = filtered
     .map((section) => {
       const isPin = isKmzPin(section);
-      const kind = isPin ? pinCaption(section).toUpperCase() : section.type === "stage" ? "STAGE" : "ROAD";
+      const synthetic = section.synthetic === true;
+      const kind = synthetic
+        ? `${pinCaption(section).toUpperCase()} · ALGE`
+        : isPin
+          ? pinCaption(section).toUpperCase()
+          : section.type === "stage"
+            ? "STAGE"
+            : "ROAD";
       const flag = section.flagStatus === "red" ? "red" : "green";
       const targetCount = Array.isArray(section.flagTargets) ? section.flagTargets.length : 0;
-      const flagButtons = isPin
-        ? ""
-        : section.type === "stage"
-          ? `<div class="car-actions">
+      const flagButtons =
+        isPin || synthetic
+          ? ""
+          : section.type === "stage"
+            ? `<div class="car-actions">
             <button type="button" class="mini-toggle${flag === "green" ? " active" : ""}" data-flag="green" data-id="${section.id}">Green flag</button>
             <button type="button" class="mini-toggle flag-red${flag === "red" ? " active" : ""}" data-flag="red" data-id="${section.id}">Red flag</button>
             <button type="button" class="mini-toggle" data-type="road" data-id="${section.id}">Make road</button>
           </div>`
-          : `<button type="button" class="mini-toggle" data-type="stage" data-id="${section.id}">Make stage</button>`;
+            : `<button type="button" class="mini-toggle" data-type="stage" data-id="${section.id}">Make stage</button>`;
+      const idHint =
+        !isPin && !synthetic && section.type === "stage"
+          ? `<small class="mono" title="Copy into Results → GPS section ID">id: ${escapeHtml(String(section.id))}</small>`
+          : "";
       return `<li class="car-row" data-section="${section.id}">
         ${listIconHtml(section)}
         <div>
           <strong>${escapeHtml(section.name)}</strong>
-          <small>${kind}${!isPin && section.type === "stage" ? ` · ${flag === "red" ? `RED FLAG${targetCount ? ` · ${targetCount} car${targetCount === 1 ? "" : "s"}` : ""}` : "GREEN FLAG"}` : ""}</small>
+          <small>${kind}${!isPin && !synthetic && section.type === "stage" ? ` · ${flag === "red" ? `RED FLAG${targetCount ? ` · ${targetCount} car${targetCount === 1 ? "" : "s"}` : ""}` : "GREEN FLAG"}` : ""}</small>
+          ${idHint}
           ${flagButtons}
         </div>
       </li>`;

@@ -681,6 +681,9 @@ async function startTracking() {
     return;
   }
   errorRead.classList.add("hidden");
+  // Drop any offline Garmin/mock queue so a fresh phone-GPS start cannot
+  // replay old points and yank HQ far from the car.
+  saveQueue([]);
   tracking = true;
   bgFixesWhileHidden = 0;
   syncLockChrome();
@@ -1043,6 +1046,13 @@ async function onFix(pos) {
   document.getElementById("stageSpeed").textContent = `Speed ${speedText}`;
   document.getElementById("accRead").textContent =
     accuracy == null ? "—" : `±${Math.round(accuracy)} m`;
+
+  // Ignore coarse network/cell fixes — they often place the car kilometres away.
+  if (accuracy != null && Number.isFinite(accuracy) && accuracy > 100) {
+    setLamp("lamp-warn", "WEAK GPS", `Waiting for a better fix (±${Math.round(accuracy)} m)`);
+    updateBgNote();
+    return;
+  }
 
   enqueueFix(pos);
   const result = await flushQueue();

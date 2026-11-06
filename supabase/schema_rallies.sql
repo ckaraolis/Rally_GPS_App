@@ -31,6 +31,10 @@ alter table rally_control_users enable row level security;
 alter table rally_events
   add column if not exists pin_icons jsonb;
 
+-- Map option: show Start / Finish pins at each special-stage line ends (ALGE timing points).
+alter table rally_events
+  add column if not exists show_stage_start_finish boolean not null default false;
+
 -- Organiser PIN that driver phones must send to stop tracking. Store only a hash.
 alter table rally_events
   add column if not exists driver_stop_salt text;

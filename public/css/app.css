@@ -535,6 +535,27 @@ body:has(#stagePanel:not(.hidden)) .driver-top .settings-gear {
   border: 1px solid var(--line);
 }
 .hint { color: var(--muted); font-size: 0.95rem; line-height: 1.4; }
+.mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 0.8rem; word-break: break-all; }
+.route-option {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 6px 10px;
+  align-items: start;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  background: #12130e;
+  color: var(--text);
+  font-size: 0.95rem;
+  cursor: pointer;
+}
+.route-option input {
+  margin-top: 3px;
+}
+.route-option .hint {
+  grid-column: 2;
+  margin: 0;
+  font-size: 0.85rem;
+}
 .control-map,
 #map.control-map {
   grid-area: map;

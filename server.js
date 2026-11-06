@@ -7,6 +7,10 @@ const auth = require("./lib/auth");
 const testSession = require("./lib/testSession");
 const { parseKmzOrKml, buildLabel, classifyPinKind } = require("./lib/kml");
 const { detectSection, haversineMeters } = require("./lib/geo");
+const {
+  withStageStartFinishMarkers,
+  resolveStageEndpoint,
+} = require("./lib/stage-endpoints");
 
 const app = express();
 const PORT = Number(process.env.PORT) || 3000;
@@ -19,6 +23,10 @@ const store = getStore();
 
 let liveSectionsCache = { at: 0, value: null };
 
+function invalidateLiveSectionsCache() {
+  liveSectionsCache = { at: 0, value: null };
+}
+
 async function liveSections() {
   const now = Date.now();
   if (liveSectionsCache.value && now - liveSectionsCache.at < 4000) {
@@ -29,17 +37,27 @@ async function liveSections() {
     const live = await store.getLiveRally();
     if (live?.id) {
       const full = (await store.getRally(live.id).catch(() => live)) || live;
+      const rawSections = await store.listSections(live.id);
       value = {
         rallyId: live.id,
-        sections: await store.listSections(live.id),
+        sections: withStageStartFinishMarkers(
+          rawSections,
+          full.showStageStartFinish === true,
+        ),
         pinIcons: full.pinIcons || {},
+        showStageStartFinish: full.showStageStartFinish === true,
       };
       liveSectionsCache = { at: now, value };
       return value;
     }
     const rallies = await store.listRallies();
     if (rallies.length) {
-      value = { rallyId: null, sections: [], pinIcons: {} };
+      value = {
+        rallyId: null,
+        sections: [],
+        pinIcons: {},
+        showStageStartFinish: false,
+      };
       liveSectionsCache = { at: now, value };
       return value;
     }
@@ -47,9 +65,19 @@ async function liveSections() {
     /* rallies table missing — fall back to any stored route */
   }
   try {
-    value = { rallyId: null, sections: await store.listSections(), pinIcons: {} };
+    value = {
+      rallyId: null,
+      sections: await store.listSections(),
+      pinIcons: {},
+      showStageStartFinish: false,
+    };
   } catch {
-    value = { rallyId: null, sections: [], pinIcons: {} };
+    value = {
+      rallyId: null,
+      sections: [],
+      pinIcons: {},
+      showStageStartFinish: false,
+    };
   }
   liveSectionsCache = { at: now, value };
   return value;
@@ -535,79 +563,6 @@ function applyFix(car, point, sections, { detect = true, updateLast = true } = {
   }
 }
 
-/** HQ marker must follow the chronologically newest fix we know about (last ∪ trail). */
-function syncLastFromKnownPoints(car) {
-  const trail = Array.isArray(car.trail) ? car.trail : [];
-  const candidates = [];
-  if (car.last && Number.isFinite(Number(car.last.lat)) && Number.isFinite(Number(car.last.lon))) {
-    candidates.push(car.last);
-  }
-  for (const p of trail) {
-    if (p && Number.isFinite(Number(p.lat)) && Number.isFinite(Number(p.lon))) candidates.push(p);
-  }
-  if (!candidates.length) return;
-
-  const now = Date.now();
-  const fresh = candidates.filter((p) => {
-    const ts = Number(p.ts);
-    return Number.isFinite(ts) && ts <= now + 120_000 && now - ts < 15 * 60 * 1000;
-  });
-  const pool = fresh.length ? fresh : candidates;
-
-  let best = pool[0];
-  let bestTs = Number(best.ts);
-  if (!Number.isFinite(bestTs)) bestTs = -Infinity;
-  for (let i = 1; i < pool.length; i += 1) {
-    const ts = Number(pool[i].ts);
-    const t = Number.isFinite(ts) ? ts : -Infinity;
-    if (t >= bestTs) {
-      best = pool[i];
-      bestTs = t;
-    }
-  }
-
-  // Catch-up can leave last on the start fix (fresh pings) while the trail already
-  // shows the car further along — snap to the newest trail point in that case.
-  if (trail.length >= 2) {
-    let trailNewest = null;
-    let trailNewestTs = -Infinity;
-    let trailOldest = null;
-    let trailOldestTs = Infinity;
-    for (const p of trail) {
-      if (!p || !Number.isFinite(Number(p.lat)) || !Number.isFinite(Number(p.lon))) continue;
-      const ts = Number(p.ts);
-      const t = Number.isFinite(ts) ? ts : 0;
-      if (t >= trailNewestTs) {
-        trailNewest = p;
-        trailNewestTs = t;
-      }
-      if (t <= trailOldestTs) {
-        trailOldest = p;
-        trailOldestTs = t;
-      }
-    }
-    if (
-      trailNewest &&
-      trailOldest &&
-      haversineMeters(best, trailNewest) > 40 &&
-      haversineMeters(best, trailOldest) < 80
-    ) {
-      best = trailNewest;
-      bestTs = trailNewestTs;
-    }
-  }
-
-  car.last = {
-    lat: Number(best.lat),
-    lon: Number(best.lon),
-    heading: best.heading ?? car.last?.heading ?? null,
-    speed: best.speed ?? car.last?.speed ?? null,
-    accuracy: best.accuracy ?? car.last?.accuracy ?? null,
-    ts: Number.isFinite(bestTs) ? bestTs : now,
-  };
-  car.tracking = true;
-}
-
 function pingPayload(car, sections, stopLock = false) {
   const { flagStatus, flagTs, live } = flagForCar(car, sections);
   return {
@@ -850,17 +805,6 @@ app.post(
 
     const { sections } = await liveSections();
     applyFix(car, point, sections, { detect: true });
-    syncLastFromKnownPoints(car);
-    if (car.last && sections) {
-      try {
-        car.section = detectSection(
-          { lat: car.last.lat, lon: car.last.lon },
-          sections
-        );
-      } catch (err) {
-        console.error("section detect failed", err.message);
-      }
-    }
     car.reconnectRequested = null;
     await store.saveCar(car);
     const stopLock = (await readLiveStopLock()).required;
@@ -898,23 +842,10 @@ app.post(
         updateLast: !trailOnly && isNewest,
       });
     }
-    // Trail-only batches build the route without walking the marker per point.
-    // Afterward, snap last to the newest known fix so HQ cannot stay on the
-    // start point while the trail already shows the car further along.
+    // Trail-only batches must never move the HQ marker once we have a live last fix.
     if (trailOnly && !car.last) {
       const newest = points[points.length - 1];
       applyFix(car, newest, sections, { detect: true, updateLast: true });
-    }
-    syncLastFromKnownPoints(car);
-    if (car.last && sections) {
-      try {
-        car.section = detectSection(
-          { lat: car.last.lat, lon: car.last.lon },
-          sections
-        );
-      } catch (err) {
-        console.error("section detect failed", err.message);
-      }
     }
     car.reconnectRequested = null;
     await store.saveCar(car);
@@ -1072,6 +1003,125 @@ app.get(
   })
 );
 
+/**
+ * Nearest tracked car within radius of a map point (for Results ALGE auto-bib).
+ * Query: lat & lon, or sectionId & point=start|finish (stage line ends).
+ * Optional: radiusM (default 500).
+ * CORS open so the Results admin (different origin) can call this from the browser.
+ */
+app.options("/api/nearest-car", (_req, res) => {
+  res.set({
+    "Access-Control-Allow-Origin": "*",
+    "Access-Control-Allow-Methods": "GET, OPTIONS",
+    "Access-Control-Allow-Headers": "Content-Type",
+  });
+  res.status(204).end();
+});
+
+app.get(
+  "/api/nearest-car",
+  asyncHandler(async (req, res) => {
+    res.set("Access-Control-Allow-Origin", "*");
+    let lat = Number(req.query.lat);
+    let lon = Number(req.query.lon);
+    let pointLabel = null;
+    const sectionId = String(req.query.sectionId || "").trim();
+    const pointRaw = String(req.query.point || "").trim().toLowerCase();
+    const radiusM = Math.min(
+      5000,
+      Math.max(1, Number(req.query.radiusM) || 500),
+    );
+
+    if (sectionId && (pointRaw === "start" || pointRaw === "finish")) {
+      const live = await liveSections();
+      // Prefer raw sections (without needing showStageStartFinish) for endpoint resolve.
+      let rawSections = live.sections || [];
+      if (live.rallyId) {
+        try {
+          rawSections = await store.listSections(live.rallyId);
+        } catch {
+          /* use live.sections */
+        }
+      } else if (!rawSections.length) {
+        try {
+          rawSections = await store.listSections();
+        } catch {
+          rawSections = [];
+        }
+      }
+      // Strip synthetic markers if present
+      const stagesOnly = rawSections.filter((s) => !s?.synthetic);
+      const ep = resolveStageEndpoint(stagesOnly, sectionId, pointRaw);
+      if (!ep) {
+        return res.status(404).json({
+          car: null,
+          error: "Stage start/finish point not found for sectionId.",
+          sectionId,
+          point: pointRaw,
+          radiusM,
+        });
+      }
+      lat = ep.lat;
+      lon = ep.lon;
+      pointLabel = ep.label;
+    }
+
+    if (!Number.isFinite(lat) || !Number.isFinite(lon)) {
+      return res.status(400).json({
+        error: "Provide lat & lon, or sectionId with point=start|finish.",
+      });
+    }
+    if (lat < -90 || lat > 90 || lon < -180 || lon > 180) {
+      return res.status(400).json({ error: "lat/lon out of range." });
+    }
+
+    const cars = await store.listCars({ includeTrail: false });
+    const origin = { lat, lon };
+    let best = null;
+    for (const car of cars) {
+      if (!car?.last || !isLive(car)) continue;
+      const clat = Number(car.last.lat);
+      const clon = Number(car.last.lon);
+      if (!Number.isFinite(clat) || !Number.isFinite(clon)) continue;
+      const distanceM = haversineMeters(origin, { lat: clat, lon: clon });
+      if (!Number.isFinite(distanceM) || distanceM > radiusM) continue;
+      if (!best || distanceM < best.distanceM) {
+        best = {
+          carNumber: String(car.carNumber || "").trim(),
+          driverName: car.driverName || "",
+          distanceM: Math.round(distanceM * 10) / 10,
+          lat: clat,
+          lon: clon,
+          ts: Number(car.last.ts) || null,
+          carId: car.id,
+        };
+      }
+    }
+
+    if (!best || !best.carNumber) {
+      return res.status(404).json({
+        car: null,
+        lat,
+        lon,
+        radiusM,
+        pointLabel,
+        sectionId: sectionId || null,
+        point: pointRaw === "finish" ? "finish" : pointRaw === "start" ? "start" : null,
+      });
+    }
+
+    res.json({
+      car: best,
+      lat,
+      lon,
+      radiusM,
+      pointLabel,
+      sectionId: sectionId || null,
+      point: pointRaw === "finish" ? "finish" : pointRaw === "start" ? "start" : null,
+    });
+  })
+);
+
 app.delete(
   "/api/cars",
   asyncHandler(async (_req, res) => {
@@ -1107,6 +1157,7 @@ app.post(
       endDate: parseDate(req.body.endDate),
       status: "draft",
       snapshot: null,
+      showStageStartFinish: false,
       carCount: 0,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
@@ -1144,6 +1195,9 @@ app.patch(
     }
     if (req.body.startDate !== undefined) rally.startDate = parseDate(req.body.startDate);
     if (req.body.endDate !== undefined) rally.endDate = parseDate(req.body.endDate);
+    if (req.body.showStageStartFinish !== undefined) {
+      rally.showStageStartFinish = req.body.showStageStartFinish === true;
+    }
     const nextStatus = req.body.status != null ? parseRallyStatus(req.body.status, rally.status) : rally.status;
     rally.updatedAt = new Date().toISOString();
     if (nextStatus === "live" && rally.status !== "live") {
@@ -1155,6 +1209,7 @@ app.patch(
       await store.saveRally(rally);
       rememberStopLock(rally);
     }
+    invalidateLiveSectionsCache();
     const saved = mergeRememberedStopLock((await store.getRally(rally.id).catch(() => rally)) || rally);
     res.json({ rally: rallySummary(saved || rally) });
   })
@@ -1414,11 +1469,23 @@ app.get(
       }
       const rally = await store.getRally(requested).catch(() => null);
       if (!rally) return res.status(404).json({ error: "Rally not found." });
-      const sections = await store.listSections(requested);
-      return res.json({ sections, rallyId: requested, pinIcons: rally.pinIcons || {} });
+      const rawSections = await store.listSections(requested);
+      const showStageStartFinish = rally.showStageStartFinish === true;
+      const sections = withStageStartFinishMarkers(rawSections, showStageStartFinish);
+      return res.json({
+        sections,
+        rallyId: requested,
+        pinIcons: rally.pinIcons || {},
+        showStageStartFinish,
+      });
     }
     const live = await liveSections();
-    res.json({ sections: live.sections, rallyId: live.rallyId, pinIcons: live.pinIcons || {} });
+    res.json({
+      sections: live.sections,
+      rallyId: live.rallyId,
+      pinIcons: live.pinIcons || {},
+      showStageStartFinish: live.showStageStartFinish === true,
+    });
   })
 );
 
