@@ -306,7 +306,8 @@ class TrackingService : Service() {
         flushingLive = true
         pendingLiveFlush = false
         try {
-            val newest = FixQueue.takeNewest(this) ?: return
+            // Live tip is separate from the trail queue — catch-up must not steal it.
+            val newest = FixQueue.takeLive() ?: return
             try {
                 val ping = client.ping(
                     current.id,
@@ -340,7 +341,7 @@ class TrackingService : Service() {
                     )
                 }
             } catch (error: Exception) {
-                FixQueue.enqueue(this, newest)
+                FixQueue.restoreLive(newest)
                 if (error.message?.contains("Unknown car", ignoreCase = true) == true) {
                     running = false
                 }

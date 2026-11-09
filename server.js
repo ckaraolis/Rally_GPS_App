@@ -574,25 +574,24 @@ function applyFix(car, point, sections, { detect = true, updateLast = true } = {
       }
       let lat = point.lat;
       let lon = point.lon;
-      // Hold the marker still through small GPS wobble (±accuracy), so the map
-      // does not flicker backwards/forwards around the true position.
-      // Moving cars use a tighter gate so HQ does not wait an extra ping.
+      // Only hold position while clearly stopped — never while moving, or HQ
+      // lags behind the real car (looked like ~30s delay after today's harden).
       if (prev && Number.isFinite(prev.lat) && Number.isFinite(prev.lon)) {
         const distM = haversineMeters(prev, point);
-        const acc = Math.max(
-          Number(point.accuracy) || 0,
-          Number(prev.accuracy) || 0,
-          3,
-        );
         const moving =
           (Number.isFinite(speed) && speed > STOPPED_SPEED_MPS) ||
           (Number.isFinite(prev.speed) && prev.speed > STOPPED_SPEED_MPS);
-        const minMoveM = moving
-          ? Math.max(2.5, Math.min(acc * 0.85, 6))
-          : Math.max(5, Math.min(acc * 1.25, 15));
-        if (distM < minMoveM) {
-          lat = prev.lat;
-          lon = prev.lon;
+        if (!moving) {
+          const acc = Math.max(
+            Number(point.accuracy) || 0,
+            Number(prev.accuracy) || 0,
+            3,
+          );
+          const minMoveM = Math.max(5, Math.min(acc * 1.25, 15));
+          if (distM < minMoveM) {
+            lat = prev.lat;
+            lon = prev.lon;
+          }
         }
       }
       car.last = {
@@ -887,7 +886,6 @@ app.post(
     if (!rawPoints.length) {
       return res.status(400).json({ error: "No GPS points." });
     }
-    const trailOnly = Boolean(req.body.trailOnly);
     const points = rawPoints
       .slice(0, MAX_BATCH)
       .map(normalizePoint)
@@ -900,16 +898,13 @@ app.post(
     const { sections } = await liveSections();
     for (let i = 0; i < points.length; i += 1) {
       const isNewest = i === points.length - 1;
-      // Catch-up uploads (trailOnly) build the route without walking the HQ marker.
+      // Always jump HQ to the newest point in the batch (stale-ts guard prevents
+      // going backwards). Blocking last updates on trailOnly left the marker
+      // frozen ~30s behind whenever live ping lagged behind catch-up.
       applyFix(car, points[i], sections, {
-        detect: !trailOnly && isNewest,
-        updateLast: !trailOnly && isNewest,
+        detect: isNewest,
+        updateLast: isNewest,
       });
-    }
-    // Trail-only batches must never move the HQ marker once we have a live last fix.
-    if (trailOnly && !car.last) {
-      const newest = points[points.length - 1];
-      applyFix(car, newest, sections, { detect: true, updateLast: true });
     }
     car.reconnectRequested = null;
     const [, stopLock] = await Promise.all([

@@ -1616,13 +1616,15 @@ function renderMap(cars) {
       const marker = markers.get(car.id);
       const prev = marker.getLatLng();
       const prevTs = Number(marker._rallyTs) || 0;
-      // Skip stale / tiny GPS wobble so the pin does not flicker reverse.
+      // Skip only clearly-stale or stopped wobble — never hold back a moving car.
       if (ts && prevTs && ts + 300 < prevTs) {
         lat = prev.lat;
         lon = prev.lng;
       } else if (prev && map) {
         const distM = map.distance(prev, L.latLng(lat, lon));
-        if (distM < 5) {
+        const speed = Number(car.last.speed);
+        const moving = Number.isFinite(speed) && speed > 0.5;
+        if (!moving && distM < 5) {
           lat = prev.lat;
           lon = prev.lng;
           if (ts > prevTs) marker._rallyTs = ts;

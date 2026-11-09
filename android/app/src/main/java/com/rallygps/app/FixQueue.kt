@@ -63,9 +63,16 @@ object FixQueue {
         }
     }
 
+    // In-memory queue — SharedPreferences.apply() races between live/trail threads
+    // were letting trail catch-up steal/overwrite the live tip and freeze HQ ~30s back.
+    private var memory: MutableList<Fix>? = null
+
+    // Latest fix for HQ. Independent of the trail queue so catch-up never removes it.
+    private var liveTip: Fix? = null
+
     @Synchronized
     fun enqueue(context: Context, fix: Fix) {
-        val queue = load(context)
+        val queue = queue(context)
         val last = queue.lastOrNull()
         if (last != null && !shouldKeep(last, fix)) {
             queue[queue.lastIndex] = fix
@@ -73,40 +80,53 @@ object FixQueue {
             queue.add(fix)
         }
         while (queue.size > MAX) queue.removeAt(0)
-        save(context, queue)
+        liveTip = fix
+        persist(context, queue)
+    }
+
+    /** Take the live HQ tip without removing trail points. */
+    @Synchronized
+    fun takeLive(): Fix? {
+        val tip = liveTip ?: return null
+        liveTip = null
+        return tip
+    }
+
+    /** Put a failed live tip back only if nothing newer arrived meanwhile. */
+    @Synchronized
+    fun restoreLive(fix: Fix) {
+        val cur = liveTip
+        if (cur == null || fix.ts >= cur.ts) liveTip = fix
     }
 
     @Synchronized
     fun peek(context: Context, limit: Int): List<Fix> {
-        return load(context).take(limit)
-    }
-
-    /** Remove and return the most recently queued fix so HQ jumps to where the car is now. */
-    @Synchronized
-    fun takeNewest(context: Context): Fix? {
-        val queue = load(context)
-        if (queue.isEmpty()) return null
-        val fix = queue.removeAt(queue.lastIndex)
-        save(context, queue)
-        return fix
+        return queue(context).take(limit)
     }
 
     @Synchronized
     fun removeFirst(context: Context, count: Int) {
         if (count <= 0) return
-        val queue = load(context)
+        val queue = queue(context)
         repeat(minOf(count, queue.size)) { queue.removeAt(0) }
-        save(context, queue)
+        persist(context, queue)
     }
 
     @Synchronized
-    fun size(context: Context): Int = load(context).size
+    fun size(context: Context): Int = queue(context).size
+
+    private fun queue(context: Context): MutableList<Fix> {
+        memory?.let { return it }
+        val loaded = loadFromPrefs(context)
+        memory = loaded
+        return loaded
+    }
 
     private fun shouldKeep(prev: Fix, next: Fix): Boolean {
         return meters(prev, next) >= MIN_METERS || next.ts - prev.ts >= MIN_INTERVAL_MS
     }
 
-    private fun load(context: Context): MutableList<Fix> {
+    private fun loadFromPrefs(context: Context): MutableList<Fix> {
         val raw = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString(KEY, null)
             ?: return mutableListOf()
         return try {
@@ -117,13 +137,14 @@ object FixQueue {
         }
     }
 
-    private fun save(context: Context, queue: List<Fix>) {
+    private fun persist(context: Context, queue: List<Fix>) {
         val arr = JSONArray()
         queue.forEach { arr.put(it.toJson()) }
+        // commit() so live + trail threads never read a stale queue mid-write.
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
             .edit()
             .putString(KEY, arr.toString())
-            .apply()
+            .commit()
     }
 
     private fun meters(a: Fix, b: Fix): Double {
