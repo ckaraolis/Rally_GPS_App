@@ -543,39 +543,61 @@ function applyFix(car, point, sections, { detect = true, updateLast = true } = {
     // so blue (stopped) always returns to green once the car moves again.
     let speed = point.speed;
     const prev = car.last;
-    if (
-      prev &&
-      Number.isFinite(prev.lat) &&
-      Number.isFinite(prev.lon) &&
-      Number.isFinite(prev.ts)
-    ) {
-      const dtSec = (point.ts - prev.ts) / 1000;
-      if (dtSec > 0.5 && dtSec < 30) {
-        const distM = haversineMeters(prev, point);
-        if (distM >= 8) {
-          const inferred = distM / dtSec;
-          if (
-            speed == null ||
-            (Number.isFinite(speed) &&
-              speed <= STOPPED_SPEED_MPS &&
-              inferred > STOPPED_SPEED_MPS)
-          ) {
-            speed = inferred;
+    // Ignore out-of-order fixes so HQ never jumps backwards in time.
+    if (prev && Number.isFinite(prev.ts) && point.ts + 300 < prev.ts) {
+      updateLast = false;
+    } else {
+      if (
+        prev &&
+        Number.isFinite(prev.lat) &&
+        Number.isFinite(prev.lon) &&
+        Number.isFinite(prev.ts)
+      ) {
+        const dtSec = (point.ts - prev.ts) / 1000;
+        if (dtSec > 0.5 && dtSec < 30) {
+          const distM = haversineMeters(prev, point);
+          if (distM >= 8) {
+            const inferred = distM / dtSec;
+            if (
+              speed == null ||
+              (Number.isFinite(speed) &&
+                speed <= STOPPED_SPEED_MPS &&
+                inferred > STOPPED_SPEED_MPS)
+            ) {
+              speed = inferred;
+            }
+          } else if (speed == null) {
+            // No GPS speed and only jitter — treat as stopped, not "unknown".
+            speed = 0;
           }
-        } else if (speed == null) {
-          // No GPS speed and only jitter — treat as stopped, not "unknown".
-          speed = 0;
         }
       }
+      let lat = point.lat;
+      let lon = point.lon;
+      // Hold the marker still through small GPS wobble (±accuracy), so the map
+      // does not flicker backwards/forwards around the true position.
+      if (prev && Number.isFinite(prev.lat) && Number.isFinite(prev.lon)) {
+        const distM = haversineMeters(prev, point);
+        const acc = Math.max(
+          Number(point.accuracy) || 0,
+          Number(prev.accuracy) || 0,
+          3,
+        );
+        const minMoveM = Math.max(5, Math.min(acc * 1.25, 15));
+        if (distM < minMoveM) {
+          lat = prev.lat;
+          lon = prev.lon;
+        }
+      }
+      car.last = {
+        lat,
+        lon,
+        heading: point.heading,
+        speed: speed == null ? null : Math.max(0, speed),
+        accuracy: point.accuracy,
+        ts: point.ts,
+      };
     }
-    car.last = {
-      lat: point.lat,
-      lon: point.lon,
-      heading: point.heading,
-      speed: speed == null ? null : Math.max(0, speed),
-      accuracy: point.accuracy,
-      ts: point.ts,
-    };
   }
 
   if (!Array.isArray(car.trail)) car.trail = [];

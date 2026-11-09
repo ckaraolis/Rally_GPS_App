@@ -1600,11 +1600,11 @@ function renderMap(cars) {
 
   for (const car of cars) {
     if (!car.last) continue;
-    const lat = Number(car.last.lat);
-    const lon = Number(car.last.lon);
+    let lat = Number(car.last.lat);
+    let lon = Number(car.last.lon);
     if (!Number.isFinite(lat) || !Number.isFinite(lon)) continue;
+    const ts = Number(car.last.ts) || 0;
     seen.add(car.id);
-    bounds.push([lat, lon]);
 
     const color = markerColor(car);
     const html = `<div class="leaflet-marker-num" style="background:${color}">${escapeHtml(
@@ -1614,6 +1614,24 @@ function renderMap(cars) {
 
     if (markers.has(car.id)) {
       const marker = markers.get(car.id);
+      const prev = marker.getLatLng();
+      const prevTs = Number(marker._rallyTs) || 0;
+      // Skip stale / tiny GPS wobble so the pin does not flicker reverse.
+      if (ts && prevTs && ts + 300 < prevTs) {
+        lat = prev.lat;
+        lon = prev.lng;
+      } else if (prev && map) {
+        const distM = map.distance(prev, L.latLng(lat, lon));
+        if (distM < 5) {
+          lat = prev.lat;
+          lon = prev.lng;
+          if (ts > prevTs) marker._rallyTs = ts;
+        } else {
+          marker._rallyTs = ts || prevTs;
+        }
+      } else if (ts) {
+        marker._rallyTs = ts;
+      }
       marker.setLatLng([lat, lon]).setIcon(icon);
       marker.setPopupContent(popupHtml(car));
     } else {
@@ -1621,9 +1639,11 @@ function renderMap(cars) {
         icon,
         title: `#${car.carNumber}`,
       }).addTo(map);
+      marker._rallyTs = ts;
       marker.bindPopup(popupHtml(car), { closeButton: true, offset: [0, -8] });
       markers.set(car.id, marker);
     }
+    bounds.push([lat, lon]);
   }
 
   for (const [id, marker] of markers) {
