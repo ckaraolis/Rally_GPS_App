@@ -29,8 +29,10 @@ import com.google.android.gms.tasks.CancellationTokenSource
 import java.util.concurrent.Executors
 
 class TrackingService : Service() {
-    // GPS upload queue — must stay single-threaded so batches stay ordered.
+    // Live GPS uploads — keep free of trail catch-up so HQ does not lag.
     private val executor = Executors.newSingleThreadExecutor()
+    // Older points only build the route polyline (must not block live pings).
+    private val trailExecutor = Executors.newSingleThreadExecutor()
     // OK / SOS / flag-ack must not wait behind a slow ping-batch (25s read timeout).
     private val urgentExecutor = Executors.newSingleThreadExecutor()
     private val handler = Handler(Looper.getMainLooper())
@@ -40,7 +42,8 @@ class TrackingService : Service() {
     private var lastLocation: Location? = null
     private var lastPingOkAt = 0L
     private var wakeLock: PowerManager.WakeLock? = null
-    private var flushing = false
+    @Volatile private var flushingLive = false
+    @Volatile private var flushingTrail = false
     @Volatile private var running = false
 
     private val pollRunnable = object : Runnable {
@@ -52,7 +55,8 @@ class TrackingService : Service() {
 
     private val networkCallback = object : ConnectivityManager.NetworkCallback() {
         override fun onAvailable(network: Network) {
-            executor.execute { flushQueue() }
+            executor.execute { flushNewest() }
+            trailExecutor.execute { flushTrailCatchUp() }
         }
     }
 
@@ -182,7 +186,8 @@ class TrackingService : Service() {
             broadcast(tracking = true)
             handler.removeCallbacks(pollRunnable)
             handler.postDelayed(pollRunnable, 2000L)
-            executor.execute { flushQueue() }
+            executor.execute { flushNewest() }
+            trailExecutor.execute { flushTrailCatchUp() }
         } catch (error: SecurityException) {
             running = false
             isActive = false
@@ -205,9 +210,10 @@ class TrackingService : Service() {
         // Flush any leftover points quietly — never rebroadcast tracking=true after stop.
         if (current != null && client != null) {
             executor.execute {
-                flushQueue(broadcastStatus = false)
+                flushNewest(broadcastStatus = false)
                 runCatching { client.stop(current.id, current.token, code) }
             }
+            trailExecutor.execute { flushTrailCatchUp(broadcastStatus = false) }
         }
         broadcast(tracking = false)
         stopForeground(STOP_FOREGROUND_REMOVE)
@@ -222,6 +228,7 @@ class TrackingService : Service() {
         unregisterNetworkCallback()
         releaseWakeLock()
         executor.shutdownNow()
+        trailExecutor.shutdownNow()
         urgentExecutor.shutdownNow()
         super.onDestroy()
     }
@@ -281,75 +288,82 @@ class TrackingService : Service() {
         executor.execute {
             if (!running) return@execute
             FixQueue.enqueue(this, FixQueue.Fix.from(location))
-            flushQueue()
+            flushNewest()
+        }
+        // Trail catch-up on its own thread so a long batch never stalls live HQ updates.
+        trailExecutor.execute { flushTrailCatchUp() }
+    }
+
+    private fun flushNewest(broadcastStatus: Boolean = true) {
+        if (flushingLive) return
+        val current = session ?: return
+        val client = api ?: return
+        flushingLive = true
+        try {
+            val newest = FixQueue.takeNewest(this) ?: return
+            try {
+                val ping = client.ping(
+                    current.id,
+                    current.token,
+                    newest.lat,
+                    newest.lon,
+                    newest.heading,
+                    newest.speed,
+                    newest.accuracy,
+                    newest.ts
+                )
+                lastPingOkAt = System.currentTimeMillis()
+                if (broadcastStatus && running) {
+                    broadcast(
+                        tracking = true,
+                        lat = newest.lat,
+                        lon = newest.lon,
+                        speed = newest.speed,
+                        heading = newest.heading,
+                        accuracy = newest.accuracy,
+                        sent = true,
+                        queued = FixQueue.size(this),
+                        sectionType = ping.sectionType,
+                        sectionName = ping.sectionName,
+                        sectionLabel = ping.sectionLabel,
+                        sectionId = ping.sectionId,
+                        flagStatus = ping.flagStatus,
+                        flagTs = ping.flagTs,
+                        flagAcked = ping.flagAcked,
+                        stopLock = ping.stopLock
+                    )
+                }
+            } catch (error: Exception) {
+                FixQueue.enqueue(this, newest)
+                if (error.message?.contains("Unknown car", ignoreCase = true) == true) {
+                    running = false
+                }
+                if (broadcastStatus && running) {
+                    val last = lastLocation
+                    broadcast(
+                        tracking = true,
+                        lat = last?.latitude,
+                        lon = last?.longitude,
+                        speed = last?.takeIf { it.hasSpeed() }?.speed,
+                        heading = last?.takeIf { it.hasBearing() }?.bearing,
+                        accuracy = last?.takeIf { it.hasAccuracy() }?.accuracy,
+                        sent = false,
+                        queued = FixQueue.size(this),
+                        error = "queued"
+                    )
+                }
+            }
+        } finally {
+            flushingLive = false
         }
     }
 
-    private fun flushQueue(broadcastStatus: Boolean = true) {
-        if (flushing) return
+    private fun flushTrailCatchUp(broadcastStatus: Boolean = true) {
+        if (flushingTrail) return
         val current = session ?: return
         val client = api ?: return
-        flushing = true
+        flushingTrail = true
         try {
-            // Jump race control to the newest fix first; older points only build the route.
-            val newest = FixQueue.takeNewest(this)
-            if (newest != null) {
-                try {
-                    val ping = client.ping(
-                        current.id,
-                        current.token,
-                        newest.lat,
-                        newest.lon,
-                        newest.heading,
-                        newest.speed,
-                        newest.accuracy,
-                        newest.ts
-                    )
-                    lastPingOkAt = System.currentTimeMillis()
-                    if (broadcastStatus && running) {
-                        broadcast(
-                            tracking = true,
-                            lat = newest.lat,
-                            lon = newest.lon,
-                            speed = newest.speed,
-                            heading = newest.heading,
-                            accuracy = newest.accuracy,
-                            sent = true,
-                            queued = FixQueue.size(this),
-                            sectionType = ping.sectionType,
-                            sectionName = ping.sectionName,
-                            sectionLabel = ping.sectionLabel,
-                            sectionId = ping.sectionId,
-                            flagStatus = ping.flagStatus,
-                            flagTs = ping.flagTs,
-                            flagAcked = ping.flagAcked,
-                            stopLock = ping.stopLock
-                        )
-                    }
-                } catch (error: Exception) {
-                    // Put it back at the end so a later flush can retry.
-                    FixQueue.enqueue(this, newest)
-                    if (error.message?.contains("Unknown car", ignoreCase = true) == true) {
-                        running = false
-                    }
-                    if (broadcastStatus && running) {
-                        val last = lastLocation
-                        broadcast(
-                            tracking = true,
-                            lat = last?.latitude,
-                            lon = last?.longitude,
-                            speed = last?.takeIf { it.hasSpeed() }?.speed,
-                            heading = last?.takeIf { it.hasBearing() }?.bearing,
-                            accuracy = last?.takeIf { it.hasAccuracy() }?.accuracy,
-                            sent = false,
-                            queued = FixQueue.size(this),
-                            error = "queued"
-                        )
-                    }
-                    return
-                }
-            }
-
             while (true) {
                 val batch = FixQueue.peek(this, 80)
                 if (batch.isEmpty()) break
@@ -394,7 +408,7 @@ class TrackingService : Service() {
                 }
             }
         } finally {
-            flushing = false
+            flushingTrail = false
         }
     }
 

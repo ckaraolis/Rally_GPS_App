@@ -665,10 +665,12 @@ async function refresh() {
   }
   renderList(latestCars);
   renderMap(showOnMap ? latestCars : []);
-  if (showOnMap) await refreshVisibleTrails();
+  // Do not await trails here — that blocked the next /api/cars poll and lagged markers.
+  return showOnMap;
   })();
   try {
-    await refreshInFlight;
+    const showOnMap = await refreshInFlight;
+    if (showOnMap) void refreshVisibleTrails();
   } finally {
     refreshInFlight = null;
   }
@@ -1698,7 +1700,7 @@ ensureControlAuth().then(async (ok) => {
   refresh();
   refreshSections();
   scheduleMapResize();
-  setInterval(refresh, 1500);
+  setInterval(refresh, 1000);
   setInterval(refreshSections, 4000);
   setInterval(refreshRallies, 8000);
 });

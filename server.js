@@ -839,7 +839,8 @@ app.post(
     const { sections } = await liveSections();
     applyFix(car, point, sections, { detect: true });
     car.reconnectRequested = null;
-    await store.saveCar(car);
+    // Light save: update last now; defer rewriting the full trail (was causing big HQ lag).
+    await store.saveCar(car, { light: true });
     const stopLock = (await readLiveStopLock()).required;
     res.json(pingPayload(car, sections, stopLock));
   })
@@ -881,7 +882,7 @@ app.post(
       applyFix(car, newest, sections, { detect: true, updateLast: true });
     }
     car.reconnectRequested = null;
-    await store.saveCar(car);
+    await store.saveCar(car, { light: true });
     const stopLock = (await readLiveStopLock()).required;
     res.json({ ...pingPayload(car, sections, stopLock), accepted: points.length });
   })
@@ -980,20 +981,28 @@ app.post(
   })
 );
 
+let carsMetaCache = { at: 0, liveRally: null, ralliesReady: true, rallyCount: 0 };
+
 app.get(
   "/api/cars",
   asyncHandler(async (_req, res) => {
     const cars = await store.listCars({ includeTrail: false });
-    let liveRally = null;
-    let ralliesReady = true;
-    let rallyCount = 0;
-    try {
-      const rallies = await store.listRallies();
-      rallyCount = rallies.length;
-      liveRally = rallies.find((r) => r.status === "live") || null;
-    } catch (err) {
-      ralliesReady = false;
-      console.error("rally_events unavailable", err.message);
+    let liveRally = carsMetaCache.liveRally;
+    let ralliesReady = carsMetaCache.ralliesReady;
+    let rallyCount = carsMetaCache.rallyCount;
+    const now = Date.now();
+    if (now - carsMetaCache.at > 2500) {
+      try {
+        const rallies = await store.listRallies();
+        rallyCount = rallies.length;
+        liveRally = rallies.find((r) => r.status === "live") || null;
+        ralliesReady = true;
+        carsMetaCache = { at: now, liveRally, ralliesReady, rallyCount };
+      } catch (err) {
+        ralliesReady = false;
+        carsMetaCache = { at: now, liveRally: null, ralliesReady: false, rallyCount: 0 };
+        console.error("rally_events unavailable", err.message);
+      }
     }
     const mapOpen = Boolean(liveRally) || !ralliesReady || rallyCount === 0;
     let sections = [];

@@ -56,7 +56,8 @@ let wakeLock = null;
 let tracking = false;
 let lastFix = null;
 let lastPingOkAt = 0;
-let flushing = false;
+let flushingLive = false;
+let flushingTrail = false;
 let bgKeepalive = null;
 let bgFixesWhileHidden = 0;
 let lastResumeAt = 0;
@@ -1410,47 +1411,53 @@ function queueMeters(a, b) {
   return 2 * r * Math.atan2(Math.sqrt(h), Math.sqrt(1 - h));
 }
 
-async function flushQueue() {
+async function flushNewest() {
   if (TEST_MODE || !session) return { ok: false };
-  if (flushing) return { ok: true, busy: true };
-  if (!loadQueue().length) return { ok: true, empty: true };
-  flushing = true;
-  let lastData = null;
+  if (flushingLive) return { ok: true, busy: true };
+  const full = loadQueue();
+  if (!full.length) return { ok: true, empty: true };
+  flushingLive = true;
   try {
-    // Jump HQ to the most recently queued fix; older points only build the route.
-    const full = loadQueue();
-    if (full.length) {
-      const newest = full[full.length - 1];
-      const res = await fetch("/api/ping", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          id: session.id,
-          token: session.token,
-          lat: newest.lat,
-          lon: newest.lon,
-          heading: newest.heading,
-          speed: newest.speed,
-          accuracy: newest.accuracy,
-          ts: newest.ts,
-        }),
-      });
-      const data = await res.json().catch(() => ({}));
-      if (res.status === 401) {
-        localStorage.removeItem(KEY);
-        localStorage.removeItem(QUEUE_KEY);
-        await stopTracking();
-        showError("This car was taken over by another phone. Join again.");
-        setupPanel.classList.remove("hidden");
-        trackPanel.classList.add("hidden");
-        return { ok: false };
-      }
-      if (!res.ok) throw new Error(data.error || "Ping failed");
-      full.pop();
-      saveQueue(full);
-      lastData = data;
+    const newest = full[full.length - 1];
+    const res = await fetch("/api/ping", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        id: session.id,
+        token: session.token,
+        lat: newest.lat,
+        lon: newest.lon,
+        heading: newest.heading,
+        speed: newest.speed,
+        accuracy: newest.accuracy,
+        ts: newest.ts,
+      }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (res.status === 401) {
+      localStorage.removeItem(KEY);
+      localStorage.removeItem(QUEUE_KEY);
+      await stopTracking();
+      showError("This car was taken over by another phone. Join again.");
+      setupPanel.classList.remove("hidden");
+      trackPanel.classList.add("hidden");
+      return { ok: false };
     }
+    if (!res.ok) throw new Error(data.error || "Ping failed");
+    full.pop();
+    saveQueue(full);
+    return { ok: true, data };
+  } catch {
+    return { ok: false };
+  } finally {
+    flushingLive = false;
+  }
+}
 
+async function flushTrailCatchUp() {
+  if (TEST_MODE || !session || flushingTrail) return;
+  flushingTrail = true;
+  try {
     while (true) {
       const queue = loadQueue();
       if (!queue.length) break;
@@ -1473,18 +1480,23 @@ async function flushQueue() {
         showError("This car was taken over by another phone. Join again.");
         setupPanel.classList.remove("hidden");
         trackPanel.classList.add("hidden");
-        return { ok: false };
+        return;
       }
       if (!res.ok) throw new Error(data.error || "Ping failed");
       saveQueue(queue.slice(batch.length));
-      lastData = data;
     }
-    return { ok: true, data: lastData };
   } catch {
-    return { ok: false };
+    /* retry on next fix */
   } finally {
-    flushing = false;
+    flushingTrail = false;
   }
+}
+
+async function flushQueue() {
+  const live = await flushNewest();
+  // Never await trail catch-up on the live path — that was a big HQ lag source.
+  void flushTrailCatchUp();
+  return live;
 }
 
 function startBackgroundKeepalive() {
