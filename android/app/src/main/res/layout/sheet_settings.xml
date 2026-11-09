@@ -87,7 +87,7 @@
         android:textColor="@color/muted"
         android:textSize="12sp" />
 
-    <com.google.android.material.materialswitch.MaterialSwitch
+    <androidx.appcompat.widget.SwitchCompat
         android:id="@+id/tripMeterSwitch"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"

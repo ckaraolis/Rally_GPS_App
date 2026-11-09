@@ -295,6 +295,10 @@ class MainActivity : AppCompatActivity() {
         applyCrewStatusUi()
         maybeHandleStopRequest(intent)
         renderTripMeter()
+        binding.tripMeterResetFab.setOnClickListener {
+            SessionStore.resetTripMeter(this)
+            renderTripMeter(0.0)
+        }
         binding.redFlagOkBtn.setOnClickListener {
             flagAcked = true
             hideRedFlagAlert()
@@ -343,7 +347,7 @@ class MainActivity : AppCompatActivity() {
         val stopBtn = view.findViewById<MaterialButton>(R.id.settingsStopBtn)
         val statusText = view.findViewById<TextView>(R.id.settingsStatusText)
         val statusHint = view.findViewById<TextView>(R.id.settingsStatusHint)
-        val tripSwitch = view.findViewById<com.google.android.material.materialswitch.MaterialSwitch>(R.id.tripMeterSwitch)
+        val tripSwitch = view.findViewById<androidx.appcompat.widget.SwitchCompat>(R.id.tripMeterSwitch)
         val tripValue = view.findViewById<TextView>(R.id.tripMeterSettingsValue)
         val tripReset = view.findViewById<MaterialButton>(R.id.tripMeterResetBtn)
 
@@ -524,20 +528,22 @@ class MainActivity : AppCompatActivity() {
     private fun renderTripMeter(meters: Double? = null) {
         val enabled = SessionStore.tripMeterEnabled(this)
         val text = SessionStore.formatTripKm(meters ?: SessionStore.tripMeterMeters(this))
-        binding.tripMeterValue.text = text
+        binding.tripMeterRoadValue.text = text
         binding.tripMeterStageValue.text = text
         if (!enabled) {
-            binding.tripMeterBadge.visibility = View.GONE
+            binding.tripMeterRoadBox.visibility = View.GONE
             binding.tripMeterStageBox.visibility = View.GONE
+            binding.tripMeterResetFab.visibility = View.GONE
             return
         }
-        // Stage screen: under SOS. Road screen: bottom-left badge.
+        binding.tripMeterResetFab.visibility = View.VISIBLE
+        // Stage: under SOS. Road: centered below telemetry / start button.
         if (inStage) {
             binding.tripMeterStageBox.visibility = View.VISIBLE
-            binding.tripMeterBadge.visibility = View.GONE
+            binding.tripMeterRoadBox.visibility = View.GONE
         } else {
             binding.tripMeterStageBox.visibility = View.GONE
-            binding.tripMeterBadge.visibility = View.VISIBLE
+            binding.tripMeterRoadBox.visibility = View.VISIBLE
         }
     }
 
@@ -945,7 +951,19 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    private fun landscapeStageHold(): Boolean =
+        resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
+
     private fun idleHoldLabel(status: String, alert: Boolean, change: Boolean): String {
+        // Landscape stage buttons are short — keep OK/SOS + Hold on one line.
+        if (!alert && landscapeStageHold()) {
+            return when {
+                status == "ok" && change -> "OK · Hold 2s to change"
+                status == "sos" && change -> "SOS · Hold 2s to change"
+                status == "ok" -> "OK · Hold 2s"
+                else -> "SOS · Hold 2s"
+            }
+        }
         return when {
             alert && status == "ok" && change -> "GREEN OK\nHold 2s to change"
             alert && status == "sos" && change -> "RED SOS\nHold 2s to change"
@@ -961,6 +979,8 @@ class MainActivity : AppCompatActivity() {
     private fun sentHoldLabel(status: String, alert: Boolean): String {
         return if (alert) {
             if (status == "ok") "GREEN OK\nSent to race control" else "RED SOS\nSent to race control"
+        } else if (landscapeStageHold()) {
+            if (status == "ok") "OK · Sent" else "SOS · Sent"
         } else {
             if (status == "ok") "OK\nSent to race control" else "SOS\nSent to race control"
         }
@@ -974,7 +994,12 @@ class MainActivity : AppCompatActivity() {
             status == "ok" -> "OK"
             else -> "SOS"
         }
-        val text = "$title\nKeep holding ${sec}s"
+        val text =
+            if (!crewAlertVisible && landscapeStageHold()) {
+                "$title · Hold ${sec}s"
+            } else {
+                "$title\nKeep holding ${sec}s"
+            }
         when {
             crewAlertVisible && status == "ok" -> binding.alertOkBtn.text = text
             crewAlertVisible && status == "sos" -> binding.alertSosBtn.text = text
@@ -1360,6 +1385,7 @@ class MainActivity : AppCompatActivity() {
             binding.stageLockNote.visibility = if (stopLock == true) View.VISIBLE else View.GONE
             applyStageFlagUi()
             applyStageCompactUi()
+            applyCrewStatusUi()
         } else {
             binding.stagePanel.visibility = View.GONE
             binding.trackPanel.visibility = View.VISIBLE

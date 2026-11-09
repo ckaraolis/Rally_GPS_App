@@ -63,6 +63,11 @@
       <p id="errorRead" class="error hidden"></p>
 
       <button id="toggleBtn" type="button" class="btn btn-start">Start tracking</button>
+
+      <div id="tripMeterRoadBox" class="trip-meter-road hidden">
+        <small>TERATRIP</small>
+        <strong id="tripMeterRoadValue">0.00 km</strong>
+      </div>
     </section>
 
     <section id="stagePanel" class="stage-panel hidden">
@@ -177,16 +182,13 @@
     </div>
   </main>
 
-  <aside id="tripMeterBadge" class="trip-meter-badge hidden" aria-live="polite">
-    <small>TRIP</small>
-    <strong id="tripMeterValue">0.00 km</strong>
-  </aside>
+  <button id="tripMeterResetFab" type="button" class="trip-meter-reset-fab hidden">Reset trip</button>
 
   <aside id="stageTimeBadge" class="stage-time-badge hidden" aria-live="polite">
     <small id="stageTimeLabel">STAGE TIME</small>
     <strong id="stageTimeValue">—</strong>
   </aside>
 
-  <script src="/js/driver.js?v=tripmeter2"></script>
+  <script src="/js/driver.js?v=tripmeter3"></script>
 </body>
 </html>

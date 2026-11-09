@@ -196,26 +196,29 @@ function saveTripState() {
 }
 
 function renderTripMeter() {
-  const badge = document.getElementById("tripMeterBadge");
+  const roadBox = document.getElementById("tripMeterRoadBox");
   const stageBox = document.getElementById("tripMeterStageBox");
-  const value = document.getElementById("tripMeterValue");
+  const resetFab = document.getElementById("tripMeterResetFab");
+  const roadValue = document.getElementById("tripMeterRoadValue");
   const stageValue = document.getElementById("tripMeterStageValue");
   const settingsValue = document.getElementById("tripMeterSettingsValue");
   const text = formatTripKm(tripMeters);
-  if (value) value.textContent = text;
+  if (roadValue) roadValue.textContent = text;
   if (stageValue) stageValue.textContent = text;
   if (settingsValue) settingsValue.textContent = text;
   if (!tripEnabled) {
-    badge?.classList.add("hidden");
+    roadBox?.classList.add("hidden");
     stageBox?.classList.add("hidden");
+    resetFab?.classList.add("hidden");
     return;
   }
+  resetFab?.classList.remove("hidden");
   if (inStage) {
     stageBox?.classList.remove("hidden");
-    badge?.classList.add("hidden");
+    roadBox?.classList.add("hidden");
   } else {
     stageBox?.classList.add("hidden");
-    badge?.classList.remove("hidden");
+    roadBox?.classList.remove("hidden");
   }
 }
 
@@ -324,6 +327,9 @@ document.getElementById("tripMeterSwitch")?.addEventListener("change", (event) =
   setTripEnabled(Boolean(event.target?.checked));
 });
 document.getElementById("tripMeterResetBtn")?.addEventListener("click", () => {
+  resetTripMeter();
+});
+document.getElementById("tripMeterResetFab")?.addEventListener("click", () => {
   resetTripMeter();
 });
 {

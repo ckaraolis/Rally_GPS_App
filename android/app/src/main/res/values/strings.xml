@@ -38,5 +38,6 @@
     <string name="trip_meter_teratrip">Teratrip</string>
     <string name="trip_meter_toggle">Measure roadbook distance</string>
     <string name="trip_meter_reset">Reset trip to 0.00 km</string>
+    <string name="trip_meter_reset_short">Reset trip</string>
     <string name="change_car_server">Change car / server</string>
 </resources>

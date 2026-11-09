@@ -1855,32 +1855,40 @@ body.test-mode::before {
   font-variant-numeric: tabular-nums;
 }
 
-/* Roadbook trip meter — bottom-left on road; under SOS on stage */
-.trip-meter-badge {
-  position: fixed;
-  left: max(12px, env(safe-area-inset-left));
-  bottom: max(12px, env(safe-area-inset-bottom));
-  z-index: 40;
+/* Roadbook trip meter — centered on road; under SOS on stage */
+.trip-meter-road {
   display: grid;
-  gap: 2px;
-  justify-items: start;
-  padding: 8px 12px;
-  background: color-mix(in srgb, var(--bg) 90%, transparent);
-  border: 1px solid color-mix(in srgb, var(--go, #22c55e) 45%, transparent);
-  pointer-events: none;
+  gap: 4px;
+  justify-items: center;
+  margin-top: 16px;
 }
-.trip-meter-badge small {
+.trip-meter-road small {
   color: var(--muted);
-  font-size: 14px;
+  font-size: 16px;
   letter-spacing: 0.08em;
   text-transform: uppercase;
 }
-.trip-meter-badge strong {
+.trip-meter-road strong {
   color: var(--go, #22c55e);
   font-family: var(--mono);
-  font-size: 36px;
+  font-size: clamp(2.4rem, 8vh, 3.2rem);
   line-height: 1.05;
   font-variant-numeric: tabular-nums;
+}
+.trip-meter-reset-fab {
+  position: fixed;
+  right: max(12px, env(safe-area-inset-right));
+  bottom: max(12px, env(safe-area-inset-bottom));
+  z-index: 45;
+  padding: 8px 14px;
+  border: 1px solid var(--line, #3a3d35);
+  background: var(--panel, #1a1c18);
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  cursor: pointer;
 }
 .trip-meter-stage {
   display: grid;

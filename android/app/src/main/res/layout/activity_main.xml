@@ -318,6 +318,36 @@
                         android:textSize="18sp"
                         android:textStyle="bold"
                         app:cornerRadius="0dp" />
+
+                    <LinearLayout
+                        android:id="@+id/tripMeterRoadBox"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="16dp"
+                        android:gravity="center"
+                        android:orientation="vertical"
+                        android:visibility="gone">
+
+                        <TextView
+                            android:id="@+id/tripMeterRoadLabel"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="@string/trip_meter_teratrip"
+                            android:textAllCaps="true"
+                            android:textColor="@color/muted"
+                            android:textSize="16sp" />
+
+                        <TextView
+                            android:id="@+id/tripMeterRoadValue"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:fontFamily="monospace"
+                            android:gravity="center"
+                            android:text="0.00 km"
+                            android:textColor="@color/go"
+                            android:textSize="48sp"
+                            android:textStyle="bold" />
+                    </LinearLayout>
                 </LinearLayout>
 
                 <LinearLayout
@@ -468,10 +498,10 @@
                                     android:backgroundTint="@color/go"
                                     android:clickable="false"
                                     android:focusable="false"
-                                    android:maxLines="3"
-                                    android:text="OK\nHold 2s"
+                                    android:maxLines="2"
+                                    android:text="OK · Hold 2s"
                                     android:textColor="@color/black"
-                                    android:textSize="20sp"
+                                    android:textSize="18sp"
                                     android:textStyle="bold"
                                     app:cornerRadius="0dp" />
 
@@ -502,10 +532,10 @@
                                     android:backgroundTint="@color/stop"
                                     android:clickable="false"
                                     android:focusable="false"
-                                    android:maxLines="3"
-                                    android:text="SOS\nHold 2s"
+                                    android:maxLines="2"
+                                    android:text="SOS · Hold 2s"
                                     android:textColor="@android:color/white"
-                                    android:textSize="20sp"
+                                    android:textSize="18sp"
                                     android:textStyle="bold"
                                     app:cornerRadius="0dp" />
 
@@ -787,40 +817,29 @@
             app:cornerRadius="0dp" />
     </LinearLayout>
 
-    <!-- Roadbook trip meter (GPS distance). -->
-    <LinearLayout
-        android:id="@+id/tripMeterBadge"
+    <!-- Quick reset for teratrip (road + stage). -->
+    <com.google.android.material.button.MaterialButton
+        android:id="@+id/tripMeterResetFab"
+        style="@style/Widget.MaterialComponents.Button"
         android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:layout_gravity="bottom|start"
+        android:layout_height="40dp"
+        android:layout_gravity="bottom|end"
         android:layout_margin="12dp"
-        android:background="#E610110F"
+        android:backgroundTint="@color/panel"
         android:elevation="16dp"
-        android:gravity="start"
-        android:orientation="vertical"
-        android:paddingHorizontal="12dp"
-        android:paddingVertical="8dp"
-        android:visibility="gone">
-
-        <TextView
-            android:id="@+id/tripMeterLabel"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="@string/trip_meter_label"
-            android:textAllCaps="true"
-            android:textColor="@color/muted"
-            android:textSize="11sp" />
-
-        <TextView
-            android:id="@+id/tripMeterValue"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:fontFamily="monospace"
-            android:text="0.00 km"
-            android:textColor="@color/go"
-            android:textSize="36sp"
-            android:textStyle="bold" />
-    </LinearLayout>
+        android:insetTop="0dp"
+        android:insetBottom="0dp"
+        android:minWidth="0dp"
+        android:paddingHorizontal="14dp"
+        android:text="@string/trip_meter_reset_short"
+        android:textAllCaps="true"
+        android:textColor="@color/ink"
+        android:textSize="13sp"
+        android:textStyle="bold"
+        android:visibility="gone"
+        app:cornerRadius="0dp"
+        app:strokeColor="@color/line"
+        app:strokeWidth="1dp" />
 
     <!-- Official Results stage time (road screen; stage uses inline under GREEN FLAG). -->
     <LinearLayout
