@@ -411,6 +411,36 @@
                                     android:textColor="@color/go"
                                     android:textSize="26sp"
                                     android:textStyle="bold" />
+
+                                <LinearLayout
+                                    android:id="@+id/stageTimeInline"
+                                    android:layout_width="match_parent"
+                                    android:layout_height="wrap_content"
+                                    android:layout_marginTop="10dp"
+                                    android:gravity="center_horizontal"
+                                    android:orientation="vertical"
+                                    android:visibility="gone">
+
+                                    <TextView
+                                        android:id="@+id/stageTimeInlineLabel"
+                                        android:layout_width="wrap_content"
+                                        android:layout_height="wrap_content"
+                                        android:text="STAGE TIME"
+                                        android:textAllCaps="true"
+                                        android:textColor="@color/muted"
+                                        android:textSize="14sp" />
+
+                                    <TextView
+                                        android:id="@+id/stageTimeInlineValue"
+                                        android:layout_width="wrap_content"
+                                        android:layout_height="wrap_content"
+                                        android:fontFamily="monospace"
+                                        android:gravity="center"
+                                        android:text="—"
+                                        android:textColor="@color/amber"
+                                        android:textSize="42sp"
+                                        android:textStyle="bold" />
+                                </LinearLayout>
                             </LinearLayout>
                         </LinearLayout>
 
@@ -489,6 +519,39 @@
                                     android:scaleX="0"
                                     android:transformPivotX="0dp" />
                             </FrameLayout>
+
+                            <LinearLayout
+                                android:id="@+id/tripMeterStageBox"
+                                android:layout_width="match_parent"
+                                android:layout_height="wrap_content"
+                                android:layout_marginTop="8dp"
+                                android:background="#1A1C18"
+                                android:gravity="center"
+                                android:orientation="vertical"
+                                android:paddingHorizontal="8dp"
+                                android:paddingVertical="6dp"
+                                android:visibility="gone">
+
+                                <TextView
+                                    android:id="@+id/tripMeterStageLabel"
+                                    android:layout_width="wrap_content"
+                                    android:layout_height="wrap_content"
+                                    android:text="@string/trip_meter_teratrip"
+                                    android:textAllCaps="true"
+                                    android:textColor="@color/muted"
+                                    android:textSize="14sp" />
+
+                                <TextView
+                                    android:id="@+id/tripMeterStageValue"
+                                    android:layout_width="wrap_content"
+                                    android:layout_height="wrap_content"
+                                    android:fontFamily="monospace"
+                                    android:gravity="center"
+                                    android:text="0.00 km"
+                                    android:textColor="@color/go"
+                                    android:textSize="36sp"
+                                    android:textStyle="bold" />
+                            </LinearLayout>
                         </LinearLayout>
                     </LinearLayout>
 
@@ -724,7 +787,42 @@
             app:cornerRadius="0dp" />
     </LinearLayout>
 
-    <!-- Official Results stage time (appears when ALGE/admin has finish for this car). -->
+    <!-- Roadbook trip meter (GPS distance). -->
+    <LinearLayout
+        android:id="@+id/tripMeterBadge"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="bottom|start"
+        android:layout_margin="12dp"
+        android:background="#E610110F"
+        android:elevation="16dp"
+        android:gravity="start"
+        android:orientation="vertical"
+        android:paddingHorizontal="12dp"
+        android:paddingVertical="8dp"
+        android:visibility="gone">
+
+        <TextView
+            android:id="@+id/tripMeterLabel"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="@string/trip_meter_label"
+            android:textAllCaps="true"
+            android:textColor="@color/muted"
+            android:textSize="11sp" />
+
+        <TextView
+            android:id="@+id/tripMeterValue"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:fontFamily="monospace"
+            android:text="0.00 km"
+            android:textColor="@color/go"
+            android:textSize="36sp"
+            android:textStyle="bold" />
+    </LinearLayout>
+
+    <!-- Official Results stage time (road screen; stage uses inline under GREEN FLAG). -->
     <LinearLayout
         android:id="@+id/stageTimeBadge"
         android:layout_width="wrap_content"
@@ -746,7 +844,7 @@
             android:text="STAGE TIME"
             android:textAllCaps="true"
             android:textColor="@color/muted"
-            android:textSize="11sp" />
+            android:textSize="14sp" />
 
         <TextView
             android:id="@+id/stageTimeValue"
@@ -755,7 +853,7 @@
             android:fontFamily="monospace"
             android:text="—"
             android:textColor="@color/amber"
-            android:textSize="28sp"
+            android:textSize="36sp"
             android:textStyle="bold" />
     </LinearLayout>
 </FrameLayout>

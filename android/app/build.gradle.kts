@@ -11,8 +11,8 @@ android {
         applicationId = "com.rallygps.app"
         minSdk = 26
         targetSdk = 35
-        versionCode = 11
-        versionName = "1.3.7"
+        versionCode = 13
+        versionName = "1.3.9"
     }
 
     buildTypes {

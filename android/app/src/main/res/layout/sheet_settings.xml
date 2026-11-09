@@ -78,6 +78,45 @@
             android:textColor="@color/ink" />
     </RadioGroup>
 
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="16dp"
+        android:text="@string/trip_meter_label"
+        android:textAllCaps="true"
+        android:textColor="@color/muted"
+        android:textSize="12sp" />
+
+    <com.google.android.material.materialswitch.MaterialSwitch
+        android:id="@+id/tripMeterSwitch"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="4dp"
+        android:text="@string/trip_meter_toggle"
+        android:textColor="@color/ink" />
+
+    <TextView
+        android:id="@+id/tripMeterSettingsValue"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="2dp"
+        android:fontFamily="monospace"
+        android:text="0.00 km"
+        android:textColor="@color/go"
+        android:textSize="20sp"
+        android:textStyle="bold" />
+
+    <com.google.android.material.button.MaterialButton
+        android:id="@+id/tripMeterResetBtn"
+        style="@style/Widget.MaterialComponents.Button.OutlinedButton"
+        android:layout_width="match_parent"
+        android:layout_height="44dp"
+        android:layout_marginTop="8dp"
+        android:text="@string/trip_meter_reset"
+        android:textColor="@color/ink"
+        app:cornerRadius="0dp"
+        app:strokeColor="@color/line" />
+
     <com.google.android.material.button.MaterialButton
         android:id="@+id/settingsChangeCarBtn"
         style="@style/Widget.MaterialComponents.Button.OutlinedButton"

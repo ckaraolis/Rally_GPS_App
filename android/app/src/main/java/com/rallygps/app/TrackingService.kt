@@ -64,6 +64,11 @@ class TrackingService : Service() {
             val heading = if (location.hasBearing()) location.bearing else null
             val speed = if (location.hasSpeed()) location.speed else null
             val accuracy = if (location.hasAccuracy()) location.accuracy else null
+            val tripMeters = SessionStore.addTripFix(
+                this@TrackingService,
+                location.latitude,
+                location.longitude
+            )
             broadcast(
                 tracking = true,
                 lat = location.latitude,
@@ -71,7 +76,8 @@ class TrackingService : Service() {
                 speed = speed,
                 heading = heading,
                 accuracy = accuracy,
-                sent = false
+                sent = false,
+                tripMeters = tripMeters
             )
             queueAndFlush(location)
         }
@@ -436,7 +442,8 @@ class TrackingService : Service() {
         flagStatus: String? = null,
         flagTs: Long? = null,
         flagAcked: Boolean? = null,
-        stopLock: Boolean? = null
+        stopLock: Boolean? = null,
+        tripMeters: Double? = null
     ) {
         val intent = Intent(TrackingActions.STATUS).apply {
             setPackage(packageName)
@@ -459,6 +466,7 @@ class TrackingService : Service() {
             if (flagTs != null) putExtra(TrackingActions.EXTRA_FLAG_TS, flagTs)
             if (flagAcked != null) putExtra(TrackingActions.EXTRA_FLAG_ACKED, flagAcked)
             if (stopLock != null) putExtra(TrackingActions.EXTRA_STOP_LOCK, stopLock)
+            if (tripMeters != null) putExtra(TrackingActions.EXTRA_TRIP_METERS, tripMeters)
         }
         sendBroadcast(intent)
     }

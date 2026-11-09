@@ -12,9 +12,18 @@ object SessionStore {
     private const val KEY_STOP_SALT = "stopSalt"
     private const val KEY_STOP_OFFLINE = "stopOffline"
     private const val KEY_THEME = "themeMode"
+    private const val KEY_TRIP_ENABLED = "tripMeterEnabled"
+    private const val KEY_TRIP_METERS = "tripMeterMeters"
+    private const val KEY_TRIP_LAST_LAT = "tripMeterLastLat"
+    private const val KEY_TRIP_LAST_LON = "tripMeterLastLon"
+    private const val KEY_TRIP_HAS_LAST = "tripMeterHasLast"
 
     const val THEME_DARK = "dark"
     const val THEME_LIGHT = "light"
+
+    /** Ignore GPS jitter below this; reject teleport jumps above this. */
+    private const val TRIP_MIN_STEP_M = 2.0
+    private const val TRIP_MAX_STEP_M = 250.0
 
     fun save(context: Context, session: Session) {
         val json = JSONObject()
@@ -140,4 +149,82 @@ object SessionStore {
     }
 
     fun isDarkTheme(context: Context): Boolean = loadTheme(context) != THEME_LIGHT
+
+    fun tripMeterEnabled(context: Context): Boolean =
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .getBoolean(KEY_TRIP_ENABLED, false)
+
+    fun setTripMeterEnabled(context: Context, enabled: Boolean) {
+        val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        val edit = prefs.edit().putBoolean(KEY_TRIP_ENABLED, enabled)
+        // Re-anchor on the next fix so enabling mid-drive does not jump.
+        edit.putBoolean(KEY_TRIP_HAS_LAST, false)
+            .remove(KEY_TRIP_LAST_LAT)
+            .remove(KEY_TRIP_LAST_LON)
+            .apply()
+    }
+
+    fun tripMeterMeters(context: Context): Double =
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .getFloat(KEY_TRIP_METERS, 0f)
+            .toDouble()
+            .coerceAtLeast(0.0)
+
+    fun resetTripMeter(context: Context) {
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .edit()
+            .putFloat(KEY_TRIP_METERS, 0f)
+            .putBoolean(KEY_TRIP_HAS_LAST, false)
+            .remove(KEY_TRIP_LAST_LAT)
+            .remove(KEY_TRIP_LAST_LON)
+            .apply()
+    }
+
+    /**
+     * Add distance from the previous GPS fix when trip meter is on.
+     * Returns the current total metres (unchanged if disabled).
+     */
+    fun addTripFix(context: Context, lat: Double, lon: Double): Double {
+        val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        if (!prefs.getBoolean(KEY_TRIP_ENABLED, false)) {
+            return prefs.getFloat(KEY_TRIP_METERS, 0f).toDouble().coerceAtLeast(0.0)
+        }
+        if (!lat.isFinite() || !lon.isFinite()) {
+            return prefs.getFloat(KEY_TRIP_METERS, 0f).toDouble().coerceAtLeast(0.0)
+        }
+        var meters = prefs.getFloat(KEY_TRIP_METERS, 0f).toDouble().coerceAtLeast(0.0)
+        val hasLast = prefs.getBoolean(KEY_TRIP_HAS_LAST, false)
+        if (hasLast) {
+            val prevLat = prefs.getFloat(KEY_TRIP_LAST_LAT, 0f).toDouble()
+            val prevLon = prefs.getFloat(KEY_TRIP_LAST_LON, 0f).toDouble()
+            val step = haversineMeters(prevLat, prevLon, lat, lon)
+            if (step >= TRIP_MIN_STEP_M && step <= TRIP_MAX_STEP_M) {
+                meters += step
+            }
+        }
+        prefs.edit()
+            .putFloat(KEY_TRIP_METERS, meters.toFloat())
+            .putBoolean(KEY_TRIP_HAS_LAST, true)
+            .putFloat(KEY_TRIP_LAST_LAT, lat.toFloat())
+            .putFloat(KEY_TRIP_LAST_LON, lon.toFloat())
+            .apply()
+        return meters
+    }
+
+    fun formatTripKm(meters: Double): String {
+        val km = (meters.coerceAtLeast(0.0) / 1000.0)
+        return String.format(java.util.Locale.US, "%.2f km", km)
+    }
+
+    private fun haversineMeters(lat1: Double, lon1: Double, lat2: Double, lon2: Double): Double {
+        val r = 6371000.0
+        val p1 = Math.toRadians(lat1)
+        val p2 = Math.toRadians(lat2)
+        val dLat = Math.toRadians(lat2 - lat1)
+        val dLon = Math.toRadians(lon2 - lon1)
+        val a =
+            Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+                Math.cos(p1) * Math.cos(p2) * Math.sin(dLon / 2) * Math.sin(dLon / 2)
+        return 2 * r * Math.asin(Math.sqrt(a))
+    }
 }

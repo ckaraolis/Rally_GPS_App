@@ -1831,7 +1831,89 @@ body.test-mode::before {
 .stage-time-badge strong {
   color: var(--amber);
   font-family: var(--mono);
-  font-size: 28px;
+  font-size: 36px;
   line-height: 1.05;
   font-variant-numeric: tabular-nums;
+}
+.stage-time-inline {
+  display: grid;
+  gap: 2px;
+  justify-items: center;
+  margin-top: 10px;
+}
+.stage-time-inline small {
+  color: var(--muted);
+  font-size: 14px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.stage-time-inline strong {
+  color: var(--amber);
+  font-family: var(--mono);
+  font-size: clamp(2rem, 7vh, 2.75rem);
+  line-height: 1.05;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Roadbook trip meter — bottom-left on road; under SOS on stage */
+.trip-meter-badge {
+  position: fixed;
+  left: max(12px, env(safe-area-inset-left));
+  bottom: max(12px, env(safe-area-inset-bottom));
+  z-index: 40;
+  display: grid;
+  gap: 2px;
+  justify-items: start;
+  padding: 8px 12px;
+  background: color-mix(in srgb, var(--bg) 90%, transparent);
+  border: 1px solid color-mix(in srgb, var(--go, #22c55e) 45%, transparent);
+  pointer-events: none;
+}
+.trip-meter-badge small {
+  color: var(--muted);
+  font-size: 14px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.trip-meter-badge strong {
+  color: var(--go, #22c55e);
+  font-family: var(--mono);
+  font-size: 36px;
+  line-height: 1.05;
+  font-variant-numeric: tabular-nums;
+}
+.trip-meter-stage {
+  display: grid;
+  gap: 2px;
+  justify-items: center;
+  padding: 6px 8px;
+  background: #1a1c18;
+}
+.trip-meter-stage small {
+  color: var(--muted);
+  font-size: 14px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.trip-meter-stage strong {
+  color: var(--go, #22c55e);
+  font-family: var(--mono);
+  font-size: clamp(1.6rem, 5.5vh, 2.25rem);
+  line-height: 1.05;
+  font-variant-numeric: tabular-nums;
+}
+.trip-meter-toggle {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 4px;
+  color: var(--ink);
+  font-size: 15px;
+}
+.trip-meter-settings-value {
+  margin: 6px 0 0;
+  color: var(--go, #22c55e);
+  font-family: var(--mono);
+  font-size: 20px;
+  font-weight: 700;
 }

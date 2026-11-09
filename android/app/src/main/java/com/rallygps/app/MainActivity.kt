@@ -77,6 +77,8 @@ class MainActivity : AppCompatActivity() {
     /** GPS stage section id we are waiting on for official Results time. */
     private var timingWatchSectionId: String? = null
     private var timingShownSectionId: String? = null
+    private var timingShownText: String? = null
+    private var timingShownLabel: String? = null
     private val stageTimeHandler = Handler(Looper.getMainLooper())
     private val stageTimePoll = object : Runnable {
         override fun run() {
@@ -244,6 +246,12 @@ class MainActivity : AppCompatActivity() {
                 intent.getFloatExtra(TrackingActions.EXTRA_ACCURACY, 0f)
             } else null
 
+            if (intent.hasExtra(TrackingActions.EXTRA_TRIP_METERS)) {
+                renderTripMeter(intent.getDoubleExtra(TrackingActions.EXTRA_TRIP_METERS, 0.0))
+            } else {
+                renderTripMeter()
+            }
+
             val speedText = speed?.let { "${(it * 3.6f).toInt()} km/h" } ?: "—"
             binding.speedRead.text = speedText
             binding.stageSpeed.text = "Speed $speedText"
@@ -286,6 +294,7 @@ class MainActivity : AppCompatActivity() {
         applyCrewAlertChromeFromDimens()
         applyCrewStatusUi()
         maybeHandleStopRequest(intent)
+        renderTripMeter()
         binding.redFlagOkBtn.setOnClickListener {
             flagAcked = true
             hideRedFlagAlert()
@@ -334,6 +343,9 @@ class MainActivity : AppCompatActivity() {
         val stopBtn = view.findViewById<MaterialButton>(R.id.settingsStopBtn)
         val statusText = view.findViewById<TextView>(R.id.settingsStatusText)
         val statusHint = view.findViewById<TextView>(R.id.settingsStatusHint)
+        val tripSwitch = view.findViewById<com.google.android.material.materialswitch.MaterialSwitch>(R.id.tripMeterSwitch)
+        val tripValue = view.findViewById<TextView>(R.id.tripMeterSettingsValue)
+        val tripReset = view.findViewById<MaterialButton>(R.id.tripMeterResetBtn)
 
         if (SessionStore.isDarkTheme(this)) themeDark.isChecked = true else themeLight.isChecked = true
 
@@ -342,6 +354,19 @@ class MainActivity : AppCompatActivity() {
             if (wantDark == SessionStore.isDarkTheme(this)) return@setOnCheckedChangeListener
             sheet.dismiss()
             ThemeHelper.setTheme(this, wantDark)
+        }
+
+        tripSwitch.isChecked = SessionStore.tripMeterEnabled(this)
+        tripValue.text = SessionStore.formatTripKm(SessionStore.tripMeterMeters(this))
+        tripSwitch.setOnCheckedChangeListener { _, checked ->
+            SessionStore.setTripMeterEnabled(this, checked)
+            renderTripMeter()
+            tripValue.text = SessionStore.formatTripKm(SessionStore.tripMeterMeters(this))
+        }
+        tripReset.setOnClickListener {
+            SessionStore.resetTripMeter(this)
+            renderTripMeter(0.0)
+            tripValue.text = SessionStore.formatTripKm(0.0)
         }
 
         val active = tracking || TrackingService.isActive
@@ -496,6 +521,51 @@ class MainActivity : AppCompatActivity() {
         super.onDestroy()
     }
 
+    private fun renderTripMeter(meters: Double? = null) {
+        val enabled = SessionStore.tripMeterEnabled(this)
+        val text = SessionStore.formatTripKm(meters ?: SessionStore.tripMeterMeters(this))
+        binding.tripMeterValue.text = text
+        binding.tripMeterStageValue.text = text
+        if (!enabled) {
+            binding.tripMeterBadge.visibility = View.GONE
+            binding.tripMeterStageBox.visibility = View.GONE
+            return
+        }
+        // Stage screen: under SOS. Road screen: bottom-left badge.
+        if (inStage) {
+            binding.tripMeterStageBox.visibility = View.VISIBLE
+            binding.tripMeterBadge.visibility = View.GONE
+        } else {
+            binding.tripMeterStageBox.visibility = View.GONE
+            binding.tripMeterBadge.visibility = View.VISIBLE
+        }
+    }
+
+    private fun renderStageTimeBadge(
+        formattedTime: String?,
+        label: String? = null,
+        show: Boolean
+    ) {
+        if (!show || formattedTime.isNullOrBlank()) {
+            binding.stageTimeBadge.visibility = View.GONE
+            binding.stageTimeInline.visibility = View.GONE
+            return
+        }
+        val title = label ?: "STAGE TIME"
+        binding.stageTimeLabel.text = title
+        binding.stageTimeValue.text = formattedTime
+        binding.stageTimeInlineLabel.text = title
+        binding.stageTimeInlineValue.text = formattedTime
+        // Stage screen: centered under GREEN FLAG. Road: bottom-right badge.
+        if (inStage) {
+            binding.stageTimeInline.visibility = View.VISIBLE
+            binding.stageTimeBadge.visibility = View.GONE
+        } else {
+            binding.stageTimeInline.visibility = View.GONE
+            binding.stageTimeBadge.visibility = View.VISIBLE
+        }
+    }
+
     private fun watchStageTiming(sectionId: String?) {
         val id = sectionId?.trim().orEmpty()
         if (id.isEmpty()) return
@@ -504,7 +574,9 @@ class MainActivity : AppCompatActivity() {
         // New stage: clear previous badge until this stage's time is ready.
         if (timingShownSectionId != id) {
             timingShownSectionId = null
-            binding.stageTimeBadge.visibility = View.GONE
+            timingShownText = null
+            timingShownLabel = null
+            renderStageTimeBadge(null, show = false)
         }
         startStageTimePolling()
     }
@@ -522,7 +594,9 @@ class MainActivity : AppCompatActivity() {
         stopStageTimePolling()
         timingWatchSectionId = null
         timingShownSectionId = null
-        binding.stageTimeBadge.visibility = View.GONE
+        timingShownText = null
+        timingShownLabel = null
+        renderStageTimeBadge(null, show = false)
     }
 
     private fun pollOfficialStageTime() {
@@ -538,10 +612,9 @@ class MainActivity : AppCompatActivity() {
             runOnUiThread {
                 if (timingWatchSectionId != sectionId) return@runOnUiThread
                 timingShownSectionId = sectionId
-                val label = result.chipLabel?.let { "$it TIME" } ?: "STAGE TIME"
-                binding.stageTimeLabel.text = label
-                binding.stageTimeValue.text = result.formattedTime
-                binding.stageTimeBadge.visibility = View.VISIBLE
+                timingShownLabel = result.chipLabel?.let { "$it TIME" } ?: "STAGE TIME"
+                timingShownText = result.formattedTime
+                renderStageTimeBadge(timingShownText, timingShownLabel, show = true)
             }
         }
     }
@@ -1305,6 +1378,8 @@ class MainActivity : AppCompatActivity() {
             }
             applyRoadCompactUi()
         }
+        renderTripMeter()
+        renderStageTimeBadge(timingShownText, timingShownLabel, show = !timingShownText.isNullOrBlank())
     }
 
     /** Landscape road/track: plate + road + speed/GPS (+ gear) on one screen, no scroll. */

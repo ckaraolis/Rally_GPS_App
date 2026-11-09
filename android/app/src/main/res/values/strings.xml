@@ -34,5 +34,9 @@
     <string name="theme_label">Theme</string>
     <string name="theme_dark">Dark</string>
     <string name="theme_light">Light</string>
+    <string name="trip_meter_label">Trip meter</string>
+    <string name="trip_meter_teratrip">Teratrip</string>
+    <string name="trip_meter_toggle">Measure roadbook distance</string>
+    <string name="trip_meter_reset">Reset trip to 0.00 km</string>
     <string name="change_car_server">Change car / server</string>
 </resources>

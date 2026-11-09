@@ -75,6 +75,10 @@
           <div class="stage-flag-box">
             <small>STAGE STATUS</small>
             <strong id="stageFlag">GREEN FLAG</strong>
+            <div id="stageTimeInline" class="stage-time-inline hidden">
+              <small id="stageTimeInlineLabel">STAGE TIME</small>
+              <strong id="stageTimeInlineValue">—</strong>
+            </div>
           </div>
         </div>
         <div class="stage-actions">
@@ -92,6 +96,10 @@
               <small class="hold-hint">Hold 2 seconds</small>
             </span>
           </button>
+          <div id="tripMeterStageBox" class="trip-meter-stage hidden">
+            <small>TERATRIP</small>
+            <strong id="tripMeterStageValue">0.00 km</strong>
+          </div>
         </div>
       </div>
       <div id="crewStatusBanner" class="crew-status-banner hidden" role="status" aria-live="polite">
@@ -156,17 +164,29 @@
           <label><input type="radio" name="driverTheme" id="themeDark" value="dark" /> Dark</label>
           <label><input type="radio" name="driverTheme" id="themeLight" value="light" /> Light</label>
         </div>
+        <p class="settings-label">Trip meter</p>
+        <label class="trip-meter-toggle">
+          <input type="checkbox" id="tripMeterSwitch" />
+          Measure roadbook distance
+        </label>
+        <p id="tripMeterSettingsValue" class="trip-meter-settings-value">0.00 km</p>
+        <button id="tripMeterResetBtn" type="button" class="btn btn-ghost settings-change-btn">Reset trip to 0.00 km</button>
         <button id="settingsChangeCar" type="button" class="btn btn-ghost settings-change-btn">Change car / server</button>
         <button id="settingsStopBtn" type="button" class="btn btn-stop btn-stop-small">Stop tracking</button>
       </div>
     </div>
   </main>
 
+  <aside id="tripMeterBadge" class="trip-meter-badge hidden" aria-live="polite">
+    <small>TRIP</small>
+    <strong id="tripMeterValue">0.00 km</strong>
+  </aside>
+
   <aside id="stageTimeBadge" class="stage-time-badge hidden" aria-live="polite">
     <small id="stageTimeLabel">STAGE TIME</small>
     <strong id="stageTimeValue">—</strong>
   </aside>
 
-  <script src="/js/driver.js?v=stagetime1"></script>
+  <script src="/js/driver.js?v=tripmeter2"></script>
 </body>
 </html>

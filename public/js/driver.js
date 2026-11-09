@@ -14,7 +14,11 @@ const KEY = "rallyGpsSession";
 const QUEUE_KEY = "rallyGpsQueue";
 const TRACKING_KEY = "rallyGpsTracking";
 const THEME_KEY = "rallyGpsTheme";
+const TRIP_ENABLED_KEY = "rallyGpsTripEnabled";
+const TRIP_METERS_KEY = "rallyGpsTripMeters";
 const STOPPED_SPEED_MPS = 1.2;
+const TRIP_MIN_STEP_M = 2;
+const TRIP_MAX_STEP_M = 250;
 const STOPPED_ALERT_MS = 20_000;
 const MAX_QUEUE = 2000;
 const MIN_QUEUE_METERS = 3;
@@ -75,7 +79,19 @@ let pendingAfterStop = null;
 /** GPS stage section id waiting for official Results time. */
 let timingWatchSectionId = null;
 let timingShownSectionId = null;
+let timingShownText = null;
+let timingShownLabel = null;
 let stageTimeTimer = null;
+let tripEnabled = false;
+let tripMeters = 0;
+let tripLast = null;
+
+try {
+  tripEnabled = localStorage.getItem(TRIP_ENABLED_KEY) === "1";
+  tripMeters = Math.max(0, Number(localStorage.getItem(TRIP_METERS_KEY)) || 0);
+} catch {
+  /* private mode */
+}
 
 if (!TEST_MODE && !window.isSecureContext && secureNote) {
   secureNote.textContent =
@@ -154,12 +170,121 @@ applyTheme((() => {
   }
 })());
 
+function formatTripKm(meters) {
+  return `${(Math.max(0, Number(meters) || 0) / 1000).toFixed(2)} km`;
+}
+
+function haversineTripMeters(a, b) {
+  const r = 6371000;
+  const p1 = (a.lat * Math.PI) / 180;
+  const p2 = (b.lat * Math.PI) / 180;
+  const dLat = ((b.lat - a.lat) * Math.PI) / 180;
+  const dLon = ((b.lon - a.lon) * Math.PI) / 180;
+  const h =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(p1) * Math.cos(p2) * Math.sin(dLon / 2) ** 2;
+  return 2 * r * Math.asin(Math.sqrt(h));
+}
+
+function saveTripState() {
+  try {
+    localStorage.setItem(TRIP_ENABLED_KEY, tripEnabled ? "1" : "0");
+    localStorage.setItem(TRIP_METERS_KEY, String(tripMeters));
+  } catch {
+    /* private mode */
+  }
+}
+
+function renderTripMeter() {
+  const badge = document.getElementById("tripMeterBadge");
+  const stageBox = document.getElementById("tripMeterStageBox");
+  const value = document.getElementById("tripMeterValue");
+  const stageValue = document.getElementById("tripMeterStageValue");
+  const settingsValue = document.getElementById("tripMeterSettingsValue");
+  const text = formatTripKm(tripMeters);
+  if (value) value.textContent = text;
+  if (stageValue) stageValue.textContent = text;
+  if (settingsValue) settingsValue.textContent = text;
+  if (!tripEnabled) {
+    badge?.classList.add("hidden");
+    stageBox?.classList.add("hidden");
+    return;
+  }
+  if (inStage) {
+    stageBox?.classList.remove("hidden");
+    badge?.classList.add("hidden");
+  } else {
+    stageBox?.classList.add("hidden");
+    badge?.classList.remove("hidden");
+  }
+}
+
+function renderStageTimeDisplay(formattedTime, label) {
+  const badge = document.getElementById("stageTimeBadge");
+  const inline = document.getElementById("stageTimeInline");
+  const badgeLabel = document.getElementById("stageTimeLabel");
+  const badgeValue = document.getElementById("stageTimeValue");
+  const inlineLabel = document.getElementById("stageTimeInlineLabel");
+  const inlineValue = document.getElementById("stageTimeInlineValue");
+  if (!formattedTime) {
+    badge?.classList.add("hidden");
+    inline?.classList.add("hidden");
+    return;
+  }
+  const title = label || "STAGE TIME";
+  if (badgeLabel) badgeLabel.textContent = title;
+  if (badgeValue) badgeValue.textContent = formattedTime;
+  if (inlineLabel) inlineLabel.textContent = title;
+  if (inlineValue) inlineValue.textContent = formattedTime;
+  if (inStage) {
+    inline?.classList.remove("hidden");
+    badge?.classList.add("hidden");
+  } else {
+    badge?.classList.remove("hidden");
+    inline?.classList.add("hidden");
+  }
+}
+
+function setTripEnabled(on) {
+  tripEnabled = Boolean(on);
+  tripLast = null;
+  saveTripState();
+  renderTripMeter();
+  const sw = document.getElementById("tripMeterSwitch");
+  if (sw) sw.checked = tripEnabled;
+}
+
+function resetTripMeter() {
+  tripMeters = 0;
+  tripLast = null;
+  saveTripState();
+  renderTripMeter();
+}
+
+function addTripFixFromCoords(lat, lon) {
+  if (!tripEnabled || !tracking) return;
+  if (!Number.isFinite(lat) || !Number.isFinite(lon)) return;
+  const next = { lat, lon };
+  if (tripLast) {
+    const step = haversineTripMeters(tripLast, next);
+    if (step >= TRIP_MIN_STEP_M && step <= TRIP_MAX_STEP_M) {
+      tripMeters += step;
+      saveTripState();
+    }
+  }
+  tripLast = next;
+  renderTripMeter();
+}
+
 function openSettingsSheet() {
   if (TEST_MODE || safetyAlertOpen()) return;
   const sheet = document.getElementById("settingsSheet");
   if (!sheet) return;
   const stopBtn = document.getElementById("settingsStopBtn");
   if (stopBtn) stopBtn.classList.toggle("hidden", !tracking);
+  const sw = document.getElementById("tripMeterSwitch");
+  if (sw) sw.checked = tripEnabled;
+  renderTripMeter();
   sheet.hidden = false;
   sheet.classList.remove("hidden");
 }
@@ -195,6 +320,17 @@ document.addEventListener("keydown", (event) => {
 });
 document.getElementById("themeDark")?.addEventListener("change", () => applyTheme("dark"));
 document.getElementById("themeLight")?.addEventListener("change", () => applyTheme("light"));
+document.getElementById("tripMeterSwitch")?.addEventListener("change", (event) => {
+  setTripEnabled(Boolean(event.target?.checked));
+});
+document.getElementById("tripMeterResetBtn")?.addEventListener("click", () => {
+  resetTripMeter();
+});
+{
+  const sw = document.getElementById("tripMeterSwitch");
+  if (sw) sw.checked = tripEnabled;
+  renderTripMeter();
+}
 document.getElementById("settingsStopBtn")?.addEventListener("click", () => {
   if (TEST_MODE) return;
   closeSettingsSheet();
@@ -570,6 +706,8 @@ function renderMode() {
     if (tracking) setLiveLamp();
   }
   updateBgNote();
+  renderTripMeter();
+  renderStageTimeDisplay(timingShownText, timingShownLabel);
 }
 
 function applyTestState(data) {
@@ -1046,7 +1184,7 @@ async function onFix(pos) {
   if (document.hidden) bgFixesWhileHidden += 1;
   lastFix = pos;
   if (!tracking) return;
-  const { speed, accuracy } = pos.coords;
+  const { latitude, longitude, speed, accuracy } = pos.coords;
   const speedText =
     speed == null || Number.isNaN(speed) ? "—" : `${Math.round(speed * 3.6)} km/h`;
   document.getElementById("speedRead").textContent = speedText;
@@ -1061,6 +1199,7 @@ async function onFix(pos) {
     return;
   }
 
+  addTripFixFromCoords(latitude, longitude);
   enqueueFix(pos);
   const result = await flushQueue();
   // Stop may have completed while the ping was in flight — never stick No GSM after stop.
@@ -1159,8 +1298,9 @@ function watchStageTiming(sectionId) {
   timingWatchSectionId = id;
   if (timingShownSectionId !== id) {
     timingShownSectionId = null;
-    const badge = document.getElementById("stageTimeBadge");
-    badge?.classList.add("hidden");
+    timingShownText = null;
+    timingShownLabel = null;
+    renderStageTimeDisplay(null, null);
   }
   startStageTimePolling();
 }
@@ -1183,7 +1323,9 @@ function clearStageTiming() {
   stopStageTimePolling();
   timingWatchSectionId = null;
   timingShownSectionId = null;
-  document.getElementById("stageTimeBadge")?.classList.add("hidden");
+  timingShownText = null;
+  timingShownLabel = null;
+  renderStageTimeDisplay(null, null);
 }
 
 async function pollOfficialStageTime() {
@@ -1200,16 +1342,11 @@ async function pollOfficialStageTime() {
     if (!data?.ok || data.pending || !data.formattedTime) return;
     if (timingWatchSectionId !== sectionId) return;
     timingShownSectionId = sectionId;
-    const badge = document.getElementById("stageTimeBadge");
-    const label = document.getElementById("stageTimeLabel");
-    const value = document.getElementById("stageTimeValue");
-    if (label) {
-      label.textContent = data.stage?.chipLabel
-        ? `${data.stage.chipLabel} TIME`
-        : "STAGE TIME";
-    }
-    if (value) value.textContent = String(data.formattedTime);
-    badge?.classList.remove("hidden");
+    timingShownLabel = data.stage?.chipLabel
+      ? `${data.stage.chipLabel} TIME`
+      : "STAGE TIME";
+    timingShownText = String(data.formattedTime);
+    renderStageTimeDisplay(timingShownText, timingShownLabel);
   } catch {
     /* keep waiting */
   }
