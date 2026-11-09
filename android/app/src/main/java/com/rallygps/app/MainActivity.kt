@@ -202,7 +202,8 @@ class MainActivity : AppCompatActivity() {
                 stageFlagStatus = "green"
                 flagAcked = true
                 resetCrewStatusUi()
-                // Keep watching the stage just left until Results publishes the time.
+                // Keep finished-stage time on screen until the next stage.
+                holdFinishedStageTiming(prevStageId)
             }
             if (wasInStage && inStage && stageId != null && prevStageId != null && stageId != prevStageId) {
                 stoppedSinceMs = null
@@ -572,18 +573,36 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    /** Stay on the finished stage's time; never clear the badge just for leaving the stage. */
+    private fun holdFinishedStageTiming(sectionId: String?) {
+        val id = (sectionId ?: timingWatchSectionId)?.trim().orEmpty()
+        if (id.isEmpty()) return
+        timingWatchSectionId = id
+        startStageTimePolling()
+        renderStageTimeBadge(
+            timingShownText,
+            timingShownLabel,
+            show = !timingShownText.isNullOrBlank()
+        )
+    }
+
     private fun watchStageTiming(sectionId: String?) {
         val id = sectionId?.trim().orEmpty()
         if (id.isEmpty()) return
-        if (timingWatchSectionId == id) return
-        timingWatchSectionId = id
-        // New stage: clear previous badge until this stage's time is ready.
-        if (timingShownSectionId != id) {
-            timingShownSectionId = null
-            timingShownText = null
-            timingShownLabel = null
-            renderStageTimeBadge(null, show = false)
+        if (timingWatchSectionId == id) {
+            renderStageTimeBadge(
+                timingShownText,
+                timingShownLabel,
+                show = !timingShownText.isNullOrBlank()
+            )
+            return
         }
+        // Entering a new stage — drop the previous stage's time only now.
+        timingWatchSectionId = id
+        timingShownSectionId = null
+        timingShownText = null
+        timingShownLabel = null
+        renderStageTimeBadge(null, show = false)
         startStageTimePolling()
     }
 

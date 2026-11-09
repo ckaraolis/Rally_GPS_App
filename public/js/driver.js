@@ -1287,7 +1287,8 @@ function applySectionAndFlag(data) {
     stageFlagStatus = "green";
     flagAcked = true;
     resetCrewStatusUi();
-    // Keep watching the stage just left until Results publishes the time.
+    // Keep finished-stage time on screen (road badge) until the next stage.
+    holdFinishedStageTiming(prevStageId);
   }
   if (wasInStage && inStage && stageId && prevStageId && stageId !== prevStageId) {
     stoppedSinceMs = null;
@@ -1298,17 +1299,28 @@ function applySectionAndFlag(data) {
   }
 }
 
+/** Stay on the finished stage's time; never clear the badge just for leaving the stage. */
+function holdFinishedStageTiming(sectionId) {
+  const id = String(sectionId || timingWatchSectionId || "").trim();
+  if (!id) return;
+  timingWatchSectionId = id;
+  startStageTimePolling();
+  renderStageTimeDisplay(timingShownText, timingShownLabel);
+}
+
 function watchStageTiming(sectionId) {
   const id = String(sectionId || "").trim();
   if (!id) return;
-  if (timingWatchSectionId === id) return;
-  timingWatchSectionId = id;
-  if (timingShownSectionId !== id) {
-    timingShownSectionId = null;
-    timingShownText = null;
-    timingShownLabel = null;
-    renderStageTimeDisplay(null, null);
+  if (timingWatchSectionId === id) {
+    renderStageTimeDisplay(timingShownText, timingShownLabel);
+    return;
   }
+  // Entering a new stage — drop the previous stage's time only now.
+  timingWatchSectionId = id;
+  timingShownSectionId = null;
+  timingShownText = null;
+  timingShownLabel = null;
+  renderStageTimeDisplay(null, null);
   startStageTimePolling();
 }
 
