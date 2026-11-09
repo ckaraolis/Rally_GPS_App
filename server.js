@@ -263,11 +263,11 @@ const MOTION_KML_ICONS = {
 
 function carMotion(car) {
   if (car.crewStatus?.status === "sos") return "sos";
-  // TEST: live cars stay green — ignore stopped/blue while tracking with recent GPS.
-  if (isLive(car)) return "moving";
+  // Recomputed on every /api/cars poll from the latest fix — not a sticky flag.
   const speed = Number(car.last?.speed);
-  if (Number.isFinite(speed) && speed > STOPPED_SPEED_MPS) return "moving";
-  return "stopped";
+  if (!Number.isFinite(speed)) return "stopped";
+  // Road or stage: stopped → blue; moving → green. SOS stays red.
+  return speed > STOPPED_SPEED_MPS ? "moving" : "stopped";
 }
 
 function motionColor(motion) {
@@ -535,11 +535,40 @@ function normalizePoint(raw) {
 function applyFix(car, point, sections, { detect = true, updateLast = true } = {}) {
   car.tracking = true;
   if (updateLast) {
+    // Prefer GPS speed; use displacement when speed is missing or under-reports
+    // so blue (stopped) always returns to green once the car moves again.
+    let speed = point.speed;
+    const prev = car.last;
+    if (
+      prev &&
+      Number.isFinite(prev.lat) &&
+      Number.isFinite(prev.lon) &&
+      Number.isFinite(prev.ts)
+    ) {
+      const dtSec = (point.ts - prev.ts) / 1000;
+      if (dtSec > 0.5 && dtSec < 30) {
+        const distM = haversineMeters(prev, point);
+        if (distM >= 8) {
+          const inferred = distM / dtSec;
+          if (
+            speed == null ||
+            (Number.isFinite(speed) &&
+              speed <= STOPPED_SPEED_MPS &&
+              inferred > STOPPED_SPEED_MPS)
+          ) {
+            speed = inferred;
+          }
+        } else if (speed == null) {
+          // No GPS speed and only jitter — treat as stopped, not "unknown".
+          speed = 0;
+        }
+      }
+    }
     car.last = {
       lat: point.lat,
       lon: point.lon,
       heading: point.heading,
-      speed: point.speed,
+      speed: speed == null ? null : Math.max(0, speed),
       accuracy: point.accuracy,
       ts: point.ts,
     };
