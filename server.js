@@ -576,6 +576,7 @@ function applyFix(car, point, sections, { detect = true, updateLast = true } = {
       let lon = point.lon;
       // Hold the marker still through small GPS wobble (±accuracy), so the map
       // does not flicker backwards/forwards around the true position.
+      // Moving cars use a tighter gate so HQ does not wait an extra ping.
       if (prev && Number.isFinite(prev.lat) && Number.isFinite(prev.lon)) {
         const distM = haversineMeters(prev, point);
         const acc = Math.max(
@@ -583,7 +584,12 @@ function applyFix(car, point, sections, { detect = true, updateLast = true } = {
           Number(prev.accuracy) || 0,
           3,
         );
-        const minMoveM = Math.max(5, Math.min(acc * 1.25, 15));
+        const moving =
+          (Number.isFinite(speed) && speed > STOPPED_SPEED_MPS) ||
+          (Number.isFinite(prev.speed) && prev.speed > STOPPED_SPEED_MPS);
+        const minMoveM = moving
+          ? Math.max(2.5, Math.min(acc * 0.85, 6))
+          : Math.max(5, Math.min(acc * 1.25, 15));
         if (distM < minMoveM) {
           lat = prev.lat;
           lon = prev.lon;
@@ -861,9 +867,11 @@ app.post(
     const { sections } = await liveSections();
     applyFix(car, point, sections, { detect: true });
     car.reconnectRequested = null;
-    // Light save: update last now; defer rewriting the full trail (was causing big HQ lag).
-    await store.saveCar(car, { light: true });
-    const stopLock = (await readLiveStopLock()).required;
+    // Light save + cached stop-lock in parallel so the phone is not blocked twice.
+    const [, stopLock] = await Promise.all([
+      store.saveCar(car, { light: true }),
+      readLiveStopLock().then((lock) => lock.required),
+    ]);
     res.json(pingPayload(car, sections, stopLock));
   })
 );
@@ -904,8 +912,10 @@ app.post(
       applyFix(car, newest, sections, { detect: true, updateLast: true });
     }
     car.reconnectRequested = null;
-    await store.saveCar(car, { light: true });
-    const stopLock = (await readLiveStopLock()).required;
+    const [, stopLock] = await Promise.all([
+      store.saveCar(car, { light: true }),
+      readLiveStopLock().then((lock) => lock.required),
+    ]);
     res.json({ ...pingPayload(car, sections, stopLock), accepted: points.length });
   })
 );
@@ -1008,6 +1018,7 @@ let carsMetaCache = { at: 0, liveRally: null, ralliesReady: true, rallyCount: 0 
 app.get(
   "/api/cars",
   asyncHandler(async (_req, res) => {
+    res.set("Cache-Control", "no-store");
     const cars = await store.listCars({ includeTrail: false });
     let liveRally = carsMetaCache.liveRally;
     let ralliesReady = carsMetaCache.ralliesReady;

@@ -44,12 +44,13 @@ class TrackingService : Service() {
     private var wakeLock: PowerManager.WakeLock? = null
     @Volatile private var flushingLive = false
     @Volatile private var flushingTrail = false
+    @Volatile private var pendingLiveFlush = false
     @Volatile private var running = false
 
     private val pollRunnable = object : Runnable {
         override fun run() {
             pollAndRefresh()
-            handler.postDelayed(this, 2000L)
+            handler.postDelayed(this, 1000L)
         }
     }
 
@@ -173,10 +174,10 @@ class TrackingService : Service() {
         acquireWakeLock()
         registerNetworkCallback()
 
-        val request = LocationRequest.Builder(Priority.PRIORITY_HIGH_ACCURACY, 2000L)
-            .setMinUpdateIntervalMillis(1000L)
+        val request = LocationRequest.Builder(Priority.PRIORITY_HIGH_ACCURACY, 1000L)
+            .setMinUpdateIntervalMillis(500L)
             .setMinUpdateDistanceMeters(0f)
-            .setMaxUpdateDelayMillis(2000L)
+            .setMaxUpdateDelayMillis(1000L)
             .setWaitForAccurateLocation(false)
             .setGranularity(Granularity.GRANULARITY_FINE)
             .build()
@@ -185,7 +186,7 @@ class TrackingService : Service() {
             fused.requestLocationUpdates(request, locationCallback, Looper.getMainLooper())
             broadcast(tracking = true)
             handler.removeCallbacks(pollRunnable)
-            handler.postDelayed(pollRunnable, 2000L)
+            handler.postDelayed(pollRunnable, 1000L)
             executor.execute { flushNewest() }
             trailExecutor.execute { flushTrailCatchUp() }
         } catch (error: SecurityException) {
@@ -295,10 +296,15 @@ class TrackingService : Service() {
     }
 
     private fun flushNewest(broadcastStatus: Boolean = true) {
-        if (flushingLive) return
+        if (flushingLive) {
+            // A newer fix arrived while a ping is in flight — send it as soon as this one ends.
+            pendingLiveFlush = true
+            return
+        }
         val current = session ?: return
         val client = api ?: return
         flushingLive = true
+        pendingLiveFlush = false
         try {
             val newest = FixQueue.takeNewest(this) ?: return
             try {
@@ -355,6 +361,10 @@ class TrackingService : Service() {
             }
         } finally {
             flushingLive = false
+            if (pendingLiveFlush && running) {
+                pendingLiveFlush = false
+                flushNewest(broadcastStatus)
+            }
         }
     }
 

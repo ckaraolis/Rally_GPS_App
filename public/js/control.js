@@ -1720,7 +1720,7 @@ ensureControlAuth().then(async (ok) => {
   refresh();
   refreshSections();
   scheduleMapResize();
-  setInterval(refresh, 1000);
+  setInterval(refresh, 500);
   setInterval(refreshSections, 4000);
   setInterval(refreshRallies, 8000);
 });

@@ -22,7 +22,7 @@ const TRIP_MAX_STEP_M = 250;
 const STOPPED_ALERT_MS = 20_000;
 const MAX_QUEUE = 2000;
 const MIN_QUEUE_METERS = 3;
-const MIN_QUEUE_MS = 2000;
+const MIN_QUEUE_MS = 1000;
 const FLAG_SOUND_SRC = "/audio/red-flag-alert.wav?v=1";
 const CREW_HOLD_MS = 2000;
 
@@ -1411,12 +1411,18 @@ function queueMeters(a, b) {
   return 2 * r * Math.atan2(Math.sqrt(h), Math.sqrt(1 - h));
 }
 
+let pendingLiveFlush = false;
+
 async function flushNewest() {
   if (TEST_MODE || !session) return { ok: false };
-  if (flushingLive) return { ok: true, busy: true };
+  if (flushingLive) {
+    pendingLiveFlush = true;
+    return { ok: true, busy: true };
+  }
   const full = loadQueue();
   if (!full.length) return { ok: true, empty: true };
   flushingLive = true;
+  pendingLiveFlush = false;
   try {
     const newest = full[full.length - 1];
     const res = await fetch("/api/ping", {
@@ -1451,6 +1457,10 @@ async function flushNewest() {
     return { ok: false };
   } finally {
     flushingLive = false;
+    if (pendingLiveFlush && tracking) {
+      pendingLiveFlush = false;
+      void flushNewest();
+    }
   }
 }
 
@@ -1505,7 +1515,7 @@ function startBackgroundKeepalive() {
     if (!tracking) return;
     requestFreshFix();
     flushQueue();
-  }, 3000);
+  }, 1000);
 }
 
 function stopBackgroundKeepalive() {
