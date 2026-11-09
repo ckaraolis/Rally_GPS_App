@@ -4,6 +4,8 @@ import android.content.Context
 import android.location.Location
 import org.json.JSONArray
 import org.json.JSONObject
+import java.util.concurrent.Executors
+import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.math.atan2
 import kotlin.math.cos
 import kotlin.math.sin
@@ -63,15 +65,17 @@ object FixQueue {
         }
     }
 
-    // In-memory queue — SharedPreferences.apply() races between live/trail threads
-    // were letting trail catch-up steal/overwrite the live tip and freeze HQ ~30s back.
+    // In-memory queue is authoritative while tracking. Disk writes are debounced so
+    // live GPS never waits on serializing thousands of points (phone-only lag).
     private var memory: MutableList<Fix>? = null
-
-    // Latest fix for HQ. Independent of the trail queue so catch-up never removes it.
     private var liveTip: Fix? = null
+    private val persistExecutor = Executors.newSingleThreadExecutor()
+    private val persistPending = AtomicBoolean(false)
+    @Volatile private var appContext: Context? = null
 
     @Synchronized
     fun enqueue(context: Context, fix: Fix) {
+        rememberContext(context)
         val queue = queue(context)
         val last = queue.lastOrNull()
         if (last != null && !shouldKeep(last, fix)) {
@@ -81,7 +85,7 @@ object FixQueue {
         }
         while (queue.size > MAX) queue.removeAt(0)
         liveTip = fix
-        persist(context, queue)
+        schedulePersist()
     }
 
     /** Take the live HQ tip without removing trail points. */
@@ -101,29 +105,60 @@ object FixQueue {
 
     @Synchronized
     fun peek(context: Context, limit: Int): List<Fix> {
+        rememberContext(context)
         return queue(context).take(limit)
     }
 
     @Synchronized
     fun removeFirst(context: Context, count: Int) {
         if (count <= 0) return
+        rememberContext(context)
         val queue = queue(context)
         repeat(minOf(count, queue.size)) { queue.removeAt(0) }
-        persist(context, queue)
+        schedulePersist()
     }
 
     @Synchronized
-    fun size(context: Context): Int = queue(context).size
+    fun size(context: Context): Int {
+        rememberContext(context)
+        return queue(context).size
+    }
+
+    /** Flush queue to disk now (call when tracking stops). */
+    fun flushToDisk(context: Context) {
+        rememberContext(context)
+        val snapshot = synchronized(this) { queue(context).toList() }
+        writePrefs(context.applicationContext, snapshot)
+    }
+
+    private fun rememberContext(context: Context) {
+        if (appContext == null) appContext = context.applicationContext
+    }
 
     private fun queue(context: Context): MutableList<Fix> {
         memory?.let { return it }
-        val loaded = loadFromPrefs(context)
+        val loaded = loadFromPrefs(context.applicationContext)
         memory = loaded
         return loaded
     }
 
     private fun shouldKeep(prev: Fix, next: Fix): Boolean {
         return meters(prev, next) >= MIN_METERS || next.ts - prev.ts >= MIN_INTERVAL_MS
+    }
+
+    private fun schedulePersist() {
+        if (!persistPending.compareAndSet(false, true)) return
+        persistExecutor.execute {
+            try {
+                Thread.sleep(500L)
+            } catch (_: InterruptedException) {
+                /* ignore */
+            }
+            persistPending.set(false)
+            val ctx = appContext ?: return@execute
+            val snapshot = synchronized(this) { memory?.toList() ?: return@execute }
+            writePrefs(ctx, snapshot)
+        }
     }
 
     private fun loadFromPrefs(context: Context): MutableList<Fix> {
@@ -137,14 +172,13 @@ object FixQueue {
         }
     }
 
-    private fun persist(context: Context, queue: List<Fix>) {
+    private fun writePrefs(context: Context, queue: List<Fix>) {
         val arr = JSONArray()
         queue.forEach { arr.put(it.toJson()) }
-        // commit() so live + trail threads never read a stale queue mid-write.
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
             .edit()
             .putString(KEY, arr.toString())
-            .commit()
+            .apply()
     }
 
     private fun meters(a: Fix, b: Fix): Double {

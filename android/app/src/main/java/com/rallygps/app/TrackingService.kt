@@ -206,6 +206,7 @@ class TrackingService : Service() {
         fused.removeLocationUpdates(locationCallback)
         unregisterNetworkCallback()
         releaseWakeLock()
+        FixQueue.flushToDisk(this)
         val current = session
         val client = api
         // Flush any leftover points quietly — never rebroadcast tracking=true after stop.
@@ -375,12 +376,15 @@ class TrackingService : Service() {
         val client = api ?: return
         flushingTrail = true
         try {
+            // One batch per wake — do not sit in a long drain loop that contends with live GPS.
             while (true) {
-                val batch = FixQueue.peek(this, 80)
+                val batch = FixQueue.peek(this, 40)
                 if (batch.isEmpty()) break
                 try {
                     val ping = client.pingBatch(current.id, current.token, batch, trailOnly = true)
                     FixQueue.removeFirst(this, batch.size)
+                    // Yield so the live executor can send the current tip between batches.
+                    if (FixQueue.size(this) > 0) break
                     lastPingOkAt = System.currentTimeMillis()
                     if (broadcastStatus && running) {
                         broadcast(

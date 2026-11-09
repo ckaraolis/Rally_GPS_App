@@ -10,11 +10,20 @@ import java.util.concurrent.TimeUnit
 
 class RallyApi(baseUrl: String) {
     private val root = baseUrl.trimEnd('/')
-    private val client = OkHttpClient.Builder()
+    // Live HQ pings must fail fast — a 25s stall left the phone ~30s behind the web driver.
+    private val liveClient = OkHttpClient.Builder()
+        .connectTimeout(5, TimeUnit.SECONDS)
+        .readTimeout(8, TimeUnit.SECONDS)
+        .writeTimeout(8, TimeUnit.SECONDS)
+        .callTimeout(8, TimeUnit.SECONDS)
+        .build()
+    // Trail catch-up can be larger/slower; never share this path with live pings.
+    private val trailClient = OkHttpClient.Builder()
         .connectTimeout(12, TimeUnit.SECONDS)
         .readTimeout(25, TimeUnit.SECONDS)
         .writeTimeout(25, TimeUnit.SECONDS)
         .build()
+    private val client get() = trailClient
     private val jsonType = "application/json; charset=utf-8".toMediaType()
 
     fun register(carNumber: String, driverName: String): Session {
@@ -71,7 +80,7 @@ class RallyApi(baseUrl: String) {
         if (speed != null && !speed.isNaN()) payload.put("speed", speed.toDouble())
         if (accuracy != null && !accuracy.isNaN()) payload.put("accuracy", accuracy.toDouble())
         if (ts != null) payload.put("ts", ts)
-        return postPing("$root/api/ping", payload)
+        return postPing(liveClient, "$root/api/ping", payload)
     }
 
     fun pingBatch(id: String, token: String, points: List<FixQueue.Fix>, trailOnly: Boolean = false): PingResult {
@@ -82,16 +91,16 @@ class RallyApi(baseUrl: String) {
             .put("token", token)
             .put("points", arr)
         if (trailOnly) payload.put("trailOnly", true)
-        return postPing("$root/api/ping-batch", payload)
+        return postPing(trailClient, "$root/api/ping-batch", payload)
     }
 
-    private fun postPing(url: String, payload: JSONObject): PingResult {
+    private fun postPing(http: OkHttpClient, url: String, payload: JSONObject): PingResult {
         val request = Request.Builder()
             .url(url)
             .post(payload.toString().toRequestBody(jsonType))
             .build()
 
-        client.newCall(request).execute().use { response ->
+        http.newCall(request).execute().use { response ->
             val text = response.body?.string().orEmpty()
             val json = runCatching { JSONObject(text) }.getOrElse { JSONObject() }
             if (!response.isSuccessful) {
