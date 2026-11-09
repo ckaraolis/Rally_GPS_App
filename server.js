@@ -1006,7 +1006,7 @@ app.get(
 /**
  * Nearest tracked car within radius of a map point (for Results ALGE auto-bib).
  * Query: lat & lon, or sectionId & point=start|finish (stage line ends).
- * Optional: radiusM (default 500).
+ * Optional: radiusM (default 50).
  * CORS open so the Results admin (different origin) can call this from the browser.
  */
 app.options("/api/nearest-car", (_req, res) => {
@@ -1029,7 +1029,7 @@ app.get(
     const pointRaw = String(req.query.point || "").trim().toLowerCase();
     const radiusM = Math.min(
       5000,
-      Math.max(1, Number(req.query.radiusM) || 500),
+      Math.max(1, Number(req.query.radiusM) || 50),
     );
 
     if (sectionId && (pointRaw === "start" || pointRaw === "finish")) {
