@@ -72,6 +72,10 @@ let flagSoundRetryBound = false;
 let crewStatusSent = null;
 let activeHold = null;
 let pendingAfterStop = null;
+/** GPS stage section id waiting for official Results time. */
+let timingWatchSectionId = null;
+let timingShownSectionId = null;
+let stageTimeTimer = null;
 
 if (!TEST_MODE && !window.isSecureContext && secureNote) {
   secureNote.textContent =
@@ -706,6 +710,8 @@ async function startTracking() {
   syncLockChrome();
   if (stopLikelyLocked()) armExitGuard();
   flushQueue();
+  if (inStage) watchStageTiming(stageId);
+  startStageTimePolling();
 }
 
 function safetyAlertOpen() {
@@ -926,6 +932,7 @@ async function applyLocalStop() {
   hideCrewAlert();
   hideRedFlagAlert();
   resetCrewStatusUi();
+  clearStageTiming();
   if (watchId != null) {
     navigator.geolocation.clearWatch(watchId);
     watchId = null;
@@ -1124,6 +1131,7 @@ function applySectionAndFlag(data) {
     acknowledgedStop = false;
     hideCrewAlert();
     resetCrewStatusUi();
+    watchStageTiming(stageId);
   }
   if (wasInStage && !inStage) {
     stoppedSinceMs = null;
@@ -1133,12 +1141,77 @@ function applySectionAndFlag(data) {
     stageFlagStatus = "green";
     flagAcked = true;
     resetCrewStatusUi();
+    // Keep watching the stage just left until Results publishes the time.
   }
   if (wasInStage && inStage && stageId && prevStageId && stageId !== prevStageId) {
     stoppedSinceMs = null;
     acknowledgedStop = false;
     hideCrewAlert();
     resetCrewStatusUi();
+    watchStageTiming(stageId);
+  }
+}
+
+function watchStageTiming(sectionId) {
+  const id = String(sectionId || "").trim();
+  if (!id) return;
+  if (timingWatchSectionId === id) return;
+  timingWatchSectionId = id;
+  if (timingShownSectionId !== id) {
+    timingShownSectionId = null;
+    const badge = document.getElementById("stageTimeBadge");
+    badge?.classList.add("hidden");
+  }
+  startStageTimePolling();
+}
+
+function startStageTimePolling() {
+  if (TEST_MODE) return;
+  if (stageTimeTimer) return;
+  stageTimeTimer = setInterval(pollOfficialStageTime, 2500);
+  pollOfficialStageTime();
+}
+
+function stopStageTimePolling() {
+  if (stageTimeTimer) {
+    clearInterval(stageTimeTimer);
+    stageTimeTimer = null;
+  }
+}
+
+function clearStageTiming() {
+  stopStageTimePolling();
+  timingWatchSectionId = null;
+  timingShownSectionId = null;
+  document.getElementById("stageTimeBadge")?.classList.add("hidden");
+}
+
+async function pollOfficialStageTime() {
+  if (TEST_MODE || !tracking || !session || !timingWatchSectionId) return;
+  const sectionId = timingWatchSectionId;
+  const carNumber = String(session.carNumber || "").trim();
+  if (!carNumber) return;
+  try {
+    const url = new URL("/api/stage-time", location.origin);
+    url.searchParams.set("carNumber", carNumber);
+    url.searchParams.set("gpsSectionId", sectionId);
+    const res = await fetch(url.toString(), { cache: "no-store" });
+    const data = await res.json().catch(() => ({}));
+    if (!data?.ok || data.pending || !data.formattedTime) return;
+    if (timingWatchSectionId !== sectionId) return;
+    timingShownSectionId = sectionId;
+    const badge = document.getElementById("stageTimeBadge");
+    const label = document.getElementById("stageTimeLabel");
+    const value = document.getElementById("stageTimeValue");
+    if (label) {
+      label.textContent = data.stage?.chipLabel
+        ? `${data.stage.chipLabel} TIME`
+        : "STAGE TIME";
+    }
+    if (value) value.textContent = String(data.formattedTime);
+    badge?.classList.remove("hidden");
+  } catch {
+    /* keep waiting */
   }
 }
 

@@ -74,6 +74,16 @@ class MainActivity : AppCompatActivity() {
     private var stopDialog: AlertDialog? = null
     private var settingsSheet: BottomSheetDialog? = null
     private var pendingAfterStop: (() -> Unit)? = null
+    /** GPS stage section id we are waiting on for official Results time. */
+    private var timingWatchSectionId: String? = null
+    private var timingShownSectionId: String? = null
+    private val stageTimeHandler = Handler(Looper.getMainLooper())
+    private val stageTimePoll = object : Runnable {
+        override fun run() {
+            pollOfficialStageTime()
+            stageTimeHandler.postDelayed(this, 2500L)
+        }
+    }
     private val baseContentPadLeft = 20
     private val baseContentPadTop = 16
     private val baseContentPadRight = 20
@@ -180,6 +190,7 @@ class MainActivity : AppCompatActivity() {
                 acknowledgedStop = false
                 hideCrewAlert()
                 resetCrewStatusUi()
+                watchStageTiming(stageId)
             }
             if (wasInStage && !inStage) {
                 stoppedSinceMs = null
@@ -189,12 +200,14 @@ class MainActivity : AppCompatActivity() {
                 stageFlagStatus = "green"
                 flagAcked = true
                 resetCrewStatusUi()
+                // Keep watching the stage just left until Results publishes the time.
             }
             if (wasInStage && inStage && stageId != null && prevStageId != null && stageId != prevStageId) {
                 stoppedSinceMs = null
                 acknowledgedStop = false
                 hideCrewAlert()
                 resetCrewStatusUi()
+                watchStageTiming(stageId)
             }
 
             if (intent.hasExtra(TrackingActions.EXTRA_FLAG_STATUS)) {
@@ -454,10 +467,12 @@ class MainActivity : AppCompatActivity() {
     override fun onResume() {
         super.onResume()
         restoreTrackingIfNeeded()
+        if (tracking || TrackingService.isActive) startStageTimePolling()
     }
 
     override fun onPause() {
         cancelHold()
+        stopStageTimePolling()
         super.onPause()
     }
 
@@ -475,9 +490,60 @@ class MainActivity : AppCompatActivity() {
 
     override fun onDestroy() {
         cancelHold()
+        stopStageTimePolling()
         stopRedFlagSound()
         stopRedFlagBlink()
         super.onDestroy()
+    }
+
+    private fun watchStageTiming(sectionId: String?) {
+        val id = sectionId?.trim().orEmpty()
+        if (id.isEmpty()) return
+        if (timingWatchSectionId == id) return
+        timingWatchSectionId = id
+        // New stage: clear previous badge until this stage's time is ready.
+        if (timingShownSectionId != id) {
+            timingShownSectionId = null
+            binding.stageTimeBadge.visibility = View.GONE
+        }
+        startStageTimePolling()
+    }
+
+    private fun startStageTimePolling() {
+        stageTimeHandler.removeCallbacks(stageTimePoll)
+        stageTimeHandler.post(stageTimePoll)
+    }
+
+    private fun stopStageTimePolling() {
+        stageTimeHandler.removeCallbacks(stageTimePoll)
+    }
+
+    private fun clearStageTiming() {
+        stopStageTimePolling()
+        timingWatchSectionId = null
+        timingShownSectionId = null
+        binding.stageTimeBadge.visibility = View.GONE
+    }
+
+    private fun pollOfficialStageTime() {
+        val current = session ?: return
+        val sectionId = timingWatchSectionId ?: return
+        if (!(tracking || TrackingService.isActive)) return
+        // Already showing this stage — keep it, light refresh only if still watching.
+        io.execute {
+            val result = runCatching {
+                RallyApi(current.serverUrl).fetchStageTime(current.carNumber, sectionId)
+            }.getOrNull() ?: return@execute
+            if (!result.ok || result.pending || result.formattedTime.isNullOrBlank()) return@execute
+            runOnUiThread {
+                if (timingWatchSectionId != sectionId) return@runOnUiThread
+                timingShownSectionId = sectionId
+                val label = result.chipLabel?.let { "$it TIME" } ?: "STAGE TIME"
+                binding.stageTimeLabel.text = label
+                binding.stageTimeValue.text = result.formattedTime
+                binding.stageTimeBadge.visibility = View.VISIBLE
+            }
+        }
     }
 
     private fun updateStopWatch(speed: Float?) {
@@ -985,6 +1051,8 @@ class MainActivity : AppCompatActivity() {
         tracking = true
         renderMode()
         refreshStopLock()
+        if (inStage) watchStageTiming(stageId)
+        startStageTimePolling()
     }
 
     private fun refreshStopLock() {
@@ -1159,6 +1227,7 @@ class MainActivity : AppCompatActivity() {
         sectionType = null
         sectionLabel = null
         stageId = null
+        clearStageTiming()
         clearNetworkHint()
         hideCrewAlert()
         hideRedFlagAlert()

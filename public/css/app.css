@@ -1807,3 +1807,31 @@ body.test-mode::before {
   }
   .test-preview { min-height: 70vh; }
 }
+
+/* Official Results stage time — bottom-right on driver screen */
+.stage-time-badge {
+  position: fixed;
+  right: max(12px, env(safe-area-inset-right));
+  bottom: max(12px, env(safe-area-inset-bottom));
+  z-index: 40;
+  display: grid;
+  gap: 2px;
+  justify-items: end;
+  padding: 8px 12px;
+  background: color-mix(in srgb, var(--bg) 90%, transparent);
+  border: 1px solid color-mix(in srgb, var(--amber) 45%, transparent);
+  pointer-events: none;
+}
+.stage-time-badge small {
+  color: var(--muted);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.stage-time-badge strong {
+  color: var(--amber);
+  font-family: var(--mono);
+  font-size: 28px;
+  line-height: 1.05;
+  font-variant-numeric: tabular-nums;
+}

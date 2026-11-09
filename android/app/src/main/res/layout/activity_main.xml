@@ -723,4 +723,39 @@
             android:textStyle="bold"
             app:cornerRadius="0dp" />
     </LinearLayout>
+
+    <!-- Official Results stage time (appears when ALGE/admin has finish for this car). -->
+    <LinearLayout
+        android:id="@+id/stageTimeBadge"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="bottom|end"
+        android:layout_margin="12dp"
+        android:background="#E610110F"
+        android:elevation="16dp"
+        android:gravity="end"
+        android:orientation="vertical"
+        android:paddingHorizontal="12dp"
+        android:paddingVertical="8dp"
+        android:visibility="gone">
+
+        <TextView
+            android:id="@+id/stageTimeLabel"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="STAGE TIME"
+            android:textAllCaps="true"
+            android:textColor="@color/muted"
+            android:textSize="11sp" />
+
+        <TextView
+            android:id="@+id/stageTimeValue"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:fontFamily="monospace"
+            android:text="—"
+            android:textColor="@color/amber"
+            android:textSize="28sp"
+            android:textStyle="bold" />
+    </LinearLayout>
 </FrameLayout>

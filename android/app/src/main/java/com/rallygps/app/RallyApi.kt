@@ -203,6 +203,31 @@ class RallyApi(baseUrl: String) {
         }
     }
 
+    /** Official Results stage time for this car + GPS stage section (may still be pending). */
+    fun fetchStageTime(carNumber: String, gpsSectionId: String): StageTimeResult {
+        val url = "$root/api/stage-time?carNumber=${java.net.URLEncoder.encode(carNumber, "UTF-8")}" +
+            "&gpsSectionId=${java.net.URLEncoder.encode(gpsSectionId, "UTF-8")}"
+        val request = Request.Builder().url(url).get().build()
+        client.newCall(request).execute().use { response ->
+            val text = response.body?.string().orEmpty()
+            val json = runCatching { JSONObject(text) }.getOrElse { JSONObject() }
+            if (!response.isSuccessful && !json.optBoolean("ok", false)) {
+                throw IllegalStateException(json.optString("error", "Stage time failed (${response.code})"))
+            }
+            val stage = json.optJSONObject("stage")
+            val formatted = json.optString("formattedTime", "").ifBlank { null }
+            val outcome = json.optString("outcome", "").ifBlank { null }
+            return StageTimeResult(
+                ok = json.optBoolean("ok", response.isSuccessful),
+                pending = json.optBoolean("pending", true),
+                formattedTime = formatted ?: outcome,
+                chipLabel = stage?.optString("chipLabel")?.ifBlank { null },
+                stageHeading = stage?.optString("heading")?.ifBlank { null },
+                error = json.optString("error", "").ifBlank { null }
+            )
+        }
+    }
+
     fun stop(id: String, token: String, code: String? = null) {
         val payload = JSONObject()
             .put("id", id)
@@ -238,4 +263,13 @@ data class StopLockInfo(
     val stopLock: Boolean,
     val salt: String? = null,
     val offline: String? = null
+)
+
+data class StageTimeResult(
+    val ok: Boolean,
+    val pending: Boolean,
+    val formattedTime: String? = null,
+    val chipLabel: String? = null,
+    val stageHeading: String? = null,
+    val error: String? = null
 )

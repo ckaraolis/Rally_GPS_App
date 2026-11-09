@@ -15,6 +15,10 @@ const {
 const app = express();
 const PORT = Number(process.env.PORT) || 3000;
 const PUBLIC_BASE_URL = (process.env.PUBLIC_BASE_URL || "").replace(/\/$/, "");
+/** Results website used to fetch official stage times for the driver app. */
+const RESULTS_BASE_URL = (
+  process.env.RESULTS_BASE_URL || "https://cyprusspeedrallyresults.com"
+).replace(/\/$/, "");
 const STALE_MS = 180_000;
 const MAX_TRAIL = 4000;
 const MAX_BATCH = 250;
@@ -1148,6 +1152,44 @@ app.get(
       sectionId: sectionId || null,
       point: pointRaw === "finish" ? "finish" : pointRaw === "start" ? "start" : null,
     });
+  })
+);
+
+/**
+ * Proxy official stage time from the Results website for the driver app.
+ * Query: carNumber & gpsSectionId (KMZ stage section id). Optional eventId.
+ */
+app.get(
+  "/api/stage-time",
+  asyncHandler(async (req, res) => {
+    const carNumber = String(req.query.carNumber || "").trim();
+    const gpsSectionId = String(req.query.gpsSectionId || "").trim();
+    const eventId = String(req.query.eventId || "").trim();
+    if (!carNumber || !gpsSectionId) {
+      return res.status(400).json({
+        ok: false,
+        error: "carNumber and gpsSectionId are required.",
+      });
+    }
+    const url = new URL(`${RESULTS_BASE_URL}/api/rally/stage-time`);
+    url.searchParams.set("carNumber", carNumber);
+    url.searchParams.set("gpsSectionId", gpsSectionId);
+    if (eventId) url.searchParams.set("eventId", eventId);
+
+    let upstream;
+    try {
+      upstream = await fetch(url.toString(), {
+        headers: { Accept: "application/json" },
+        cache: "no-store",
+      });
+    } catch (err) {
+      return res.status(502).json({
+        ok: false,
+        error: `Results unreachable: ${err.message || "network error"}`,
+      });
+    }
+    const data = await upstream.json().catch(() => ({}));
+    res.status(upstream.status).json(data);
   })
 );
 
