@@ -1808,15 +1808,16 @@ body.test-mode::before {
   .test-preview { min-height: 70vh; }
 }
 
-/* Official Results stage time — bottom-right on driver screen */
+/* Official Results stage time — bottom-left on road (reset trip stays bottom-right) */
 .stage-time-badge {
   position: fixed;
-  right: max(12px, env(safe-area-inset-right));
+  left: max(12px, env(safe-area-inset-left));
+  right: auto;
   bottom: max(12px, env(safe-area-inset-bottom));
   z-index: 40;
   display: grid;
   gap: 2px;
-  justify-items: end;
+  justify-items: start;
   padding: 8px 12px;
   background: color-mix(in srgb, var(--bg) 90%, transparent);
   border: 1px solid color-mix(in srgb, var(--amber) 45%, transparent);

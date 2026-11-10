@@ -563,7 +563,7 @@ class MainActivity : AppCompatActivity() {
         binding.stageTimeValue.text = formattedTime
         binding.stageTimeInlineLabel.text = title
         binding.stageTimeInlineValue.text = formattedTime
-        // Stage screen: centered under GREEN FLAG. Road: bottom-right badge.
+        // Stage screen: centered under GREEN FLAG. Road: bottom-left badge.
         if (inStage) {
             binding.stageTimeInline.visibility = View.VISIBLE
             binding.stageTimeBadge.visibility = View.GONE
